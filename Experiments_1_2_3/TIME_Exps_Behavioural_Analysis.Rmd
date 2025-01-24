@@ -1,0 +1,1305 @@
+---
+title: "TIME_Exps_Behavioural_Analysis"
+output: 
+  pdf_document: 
+date: "`r Sys.Date()`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##
+```{r Load Libraries and paths, warning=FALSE, out.width="55%"}
+# Load libraries and set path ------------------------------------------------
+library(lme4);library(car); 
+library(ggplot2);library(emmeans)
+library(tinytex);library(MKinfer)
+library(BayesFactor)
+
+# get data folder paths
+# Current directory needs to be set to the script's folder
+Exp1DataFolder <- paste(getwd(), "/Exp1Data", sep = "")
+Exp2DataFolder <- paste(getwd(), "/Exp2Data", sep = "")
+Exp3DataFolder <- paste(getwd(), "/Exp3Data", sep = "")
+Exp2SyncDataFolder <- paste(Exp2DataFolder,"/SyncDiscData", sep = "")
+Exp3SyncDataFolder <- paste(Exp3DataFolder,"/SyncDiscData", sep = "")
+
+#Colour coding
+LongNoFlickerColour <- "#F8766D"
+ShortNoFlickerColour <- "#7CAE00"
+SyncThetaColour <- "#00BFC4"
+AsyncThetaColour <- "#C77CFF"
+SyncDeltaColour <- "#FF9913"
+SyncDiscColour <- "#CC9999"
+
+```
+
+```{r Exp1 Main Analyses, warning=FALSE, out.width="55%"}
+
+# Arrange the data --------------------------------------------------------
+
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# List of subject names
+subjects <- c("Sub_01", "Sub_02", "Sub_03", "Sub_04", "Sub_05", "Sub_06", "Sub_07",
+              "Sub_08", "Sub_09", "Sub_10", "Sub_11", "Sub_12", "Sub_13", "Sub_14",
+              "Sub_15", "Sub_16", "Sub_17", "Sub_18", "Sub_19", "Sub_20", "Sub_21",
+              "Sub_22", "Sub_23", "Sub_24", "Sub_25", "Sub_26", "Sub_27")
+
+# Initialize data frame
+Exp1Data <- data.frame()
+
+# Loop through subjects to fetch the data
+for (iSub in 1:length(subjects)) {
+  # Define file name
+  File_pattern <- list.files(path = Exp1DataFolder, pattern = subjects[iSub])
+  
+  # Read the CSV file
+  sub_data <- read.csv(file.path(Exp1DataFolder, File_pattern), header = TRUE)
+  
+  # omit flicker conditions because of the experiment error
+  sub_data <- sub_data[sub_data$Condition == "NoFlickerHalf" | sub_data$Condition == "NoFlickerFull",]
+  
+  # Add subject data into the data data
+  Exp1Data <- rbind(Exp1Data, sub_data)
+}
+
+Subs <- 1:length(subjects)
+
+# Check if subject has less trials than it is supposed to be
+for (iSub in Subs) {
+  
+  nRows = na.omit(Exp1Data[Exp1Data$ParticipantID == iSub,])
+  
+  if (dim(nRows)[1] < 96) {
+    print(paste("Sub", iSub, "has", dim(nRows)[1]), sep = "")
+  }
+}
+
+# Calculate the mean accuracy for each subject
+Mean_Accs <- tapply(Exp1Data$Accuracy, Exp1Data$ParticipantID , mean)
+
+# parameters
+nIterations <- 10000
+
+# Loop through subjects to test whether they performed near chance-level
+for (iSub in Subs) {
+  
+  NullDist <- data.frame(Acc=rep(NA,nIterations))
+  
+  for (i in 1:nIterations) {
+    # Generate random responses between 1 and 4
+    Responses <- Exp1Data[Exp1Data$ParticipantID == iSub, "Response"]
+    
+    # Generate random answers between 1 and 4
+    Answers <- sample(Exp1Data[Exp1Data$ParticipantID == iSub, "CorrectKey"])
+    
+    NullDist[i,1] <- ((sum(Responses == Answers))/length(Responses))*100
+  }
+  
+  # Sort distribution
+  SortedNullDist <- NullDist[order(NullDist$Acc),]
+  Significance_Threshold <- SortedNullDist[length(SortedNullDist)-nIterations*.05]
+  
+  print(ggplot(NullDist, aes(x=Acc)) + geom_density(fill="gray") +
+          geom_vline(aes(xintercept = Mean_Accs[as.character(iSub)]*100),
+                     color="green", linetype="dashed", linewidth=1)+
+          geom_vline(aes(xintercept = Significance_Threshold),
+                     color="red", linetype="dashed", linewidth=1)+
+          ggtitle(paste("Sub -", as.character(iSub))))
+  
+  if ((Mean_Accs[as.character(iSub)])*100 <= Significance_Threshold) {
+    print(paste("Sub", iSub,' is at chance-level!!!'))
+  }
+}
+
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# List of subject names without subject 16
+subjects <- c("Sub_01", "Sub_02", "Sub_03", "Sub_04", "Sub_05", "Sub_06", "Sub_07",
+              "Sub_08", "Sub_09", "Sub_10", "Sub_11", "Sub_12", "Sub_13", "Sub_14",
+              "Sub_15", "Sub_17", "Sub_18", "Sub_19", "Sub_20", "Sub_21",
+              "Sub_22", "Sub_23", "Sub_24", "Sub_25", "Sub_26", "Sub_27")
+
+# Initialize data frame
+Exp1Data <- data.frame()
+
+# Loop through subjects to fetch the data
+for (iSub in 1:length(subjects)) {
+  # Define file name
+  File_pattern <- list.files(path = Exp1DataFolder, pattern = subjects[iSub])
+  
+  # Read the CSV file
+  sub_data <- read.csv(file.path(Exp1DataFolder, File_pattern), header = TRUE)
+  
+  # Add subject data into the data data
+  Exp1Data <- rbind(Exp1Data, sub_data)
+}
+
+# Run model for only no-flicker conditions
+Exp1Data.model = glmer(Accuracy ~ Condition + (1|ClipID) + (1|ParticipantID),
+                   data = Exp1Data, family = binomial,
+                   subset = Exp1Data$Condition == "NoFlickerHalf" | Exp1Data$Condition == "NoFlickerFull")
+Anova(Exp1Data.model)
+summary(Exp1Data.model)
+
+Exp1Data.model.emm <- emmeans(Exp1Data.model, "Condition")
+pairs(Exp1Data.model.emm)
+
+# Calculate accuracy for each subject and condition
+NoFlicker_pSub <- aggregate(Accuracy ~ ParticipantID + Condition, data = Exp1Data, mean)
+NoFlicker_pSub$Condition = factor(NoFlicker_pSub$Condition, levels = c("NoFlickerFull", "NoFlickerHalf", "SyncTheta", "AsyncTheta"), ordered = FALSE)
+
+# Plot trial-averaged means
+ggplot(NoFlicker_pSub, aes(x = Condition, y = Accuracy*100, fill = Condition)) +
+  geom_hline(yintercept=25,linetype=2)+
+  annotate("text", x="NoFlickerFull", y=23, label="chance level                     ",size=3.5)+
+  geom_violin(trim=TRUE)+
+  geom_point(size = 2, color = "gray", position = position_jitterdodge(jitter.width = .4)) +
+  labs(title="Trial-Averaged Means per Condition", x = "Condition", y = "Memory Accuracy (%)")+
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black")+
+  scale_fill_manual(values = c("NoFlickerFull" = LongNoFlickerColour, "NoFlickerHalf" = ShortNoFlickerColour, "SyncTheta" = SyncThetaColour, "AsyncTheta" = AsyncThetaColour))+
+  scale_x_discrete(labels=c("NoFlickerFull" = "LongNoFlicker", "NoFlickerHalf" = "ShortNoFlicker"))
+
+
+
+```
+
+```{r Exp1 Sync Discrimination Task, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+## Load Exp1 Sync Discrimination task data
+# Define file name
+Exp1SyncTaskData <- read.csv(file.path(Exp1DataFolder, "Exp1_SyncTaskData.csv"), header = TRUE)
+
+# exclude sub 16
+Exp1SyncTaskData <- Exp1SyncTaskData[Exp1SyncTaskData$ParticipantID != 16,]
+
+## Calculate D-prime scores
+nSub <- length(unique(Exp1SyncTaskData$ParticipantID))
+
+# Initialize vectors to store results
+nHits_pSub <- rep(NA, nSub)
+HitRate_pSub <- rep(NA, nSub)
+nFAs_pSub <- rep(NA, nSub)
+FARate_pSub <- rep(NA, nSub)
+Exp1Dprime_pSub <- rep(NA, nSub)
+Exp1Sync_subnumsnums <- rep(NA, nSub)
+
+# Loop over subjects
+for (iSub in 1:nSub) {
+  
+  Exp1SyncData <- Exp1SyncTaskData[Exp1SyncTaskData$ParticipantID == unique(Exp1SyncTaskData$ParticipantID)[iSub],]
+  
+  # Calculate Hit Rate
+  nHits_pSub[iSub] <- sum(Exp1SyncData$SyncRating == 1 & Exp1SyncData$Accuracy == 1)
+  HitRate_pSub[iSub] <- nHits_pSub[iSub] / sum(Exp1SyncData$SyncRating == 1)
+  
+  # Calculate False Alarm Rate
+  nFAs_pSub[iSub] <- sum(Exp1SyncData$SyncRating == 2 & Exp1SyncData$Accuracy == 0)
+  FARate_pSub[iSub] <- nFAs_pSub[iSub] / sum(Exp1SyncData$SyncRating == 2)
+  
+  # Calculate d-prime
+  Exp1Dprime_pSub[iSub] <- qnorm(HitRate_pSub[iSub]) - qnorm(FARate_pSub[iSub])
+  Exp1Sync_subnumsnums[iSub] <- Exp1SyncData$ParticipantID[iSub]
+}
+
+# Create a data frame
+Exp1DprimeData <- data.frame(ParticipantID = as.factor(Exp1Sync_subnumsnums), Dprime = Exp1Dprime_pSub)
+
+# significance test
+(DPrime_out <- boot.t.test(Exp1DprimeData$Dprime, alternative = c("two.sided", "less", "greater"),
+                           mu = 0, paired = FALSE, var.equal = FALSE, conf.level = 0.95,
+                           R = 100000, symmetric = FALSE))
+
+# Create a violin plot
+ggplot(data = Exp1DprimeData, aes(x = 1, y = Dprime)) +
+  geom_violin(width=1, fill = SyncDiscColour, color = "black") +
+  scale_x_discrete( ) +
+  geom_point(position = "jitter",size = 2, color = "gray") +
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black")+
+  labs(title = "D-prime Scores",
+       y = "D-prime")
+
+```
+
+```{r Exp2 Main Analysis, message=FALSE, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# List of subject names
+subjects <- c("Sub_01", "Sub_02", "Sub_03", "Sub_04", "Sub_05", "Sub_06", "Sub_07",
+              "Sub_08", "Sub_09", "Sub_10", "Sub_11", "Sub_12", "Sub_13", "Sub_14",
+              "Sub_15", "Sub_16", "Sub_17", "Sub_18", "Sub_19", "Sub_20", "Sub_21",
+              "Sub_22", "Sub_23", "Sub_24", "Sub_25", "Sub_26", "Sub_27", "Sub_28",
+              "Sub_29", "Sub_30", "Sub_31", "Sub_32")
+
+# Initialize data frame
+Exp2Data <- data.frame()
+
+# Loop through subjects
+for (iSub in 1:length(subjects)) {
+  # Define file name
+  File_pattern <- paste(subjects[iSub], "_memory.csv", sep = "")
+  
+  # Read the CSV file
+  sub_data <- read.csv(file.path(Exp2DataFolder, File_pattern), header = TRUE)
+  
+  # Combine the subject's runs with the overall combined data
+  Exp2Data <- rbind(Exp2Data, sub_data)
+}
+
+# Participant Exclusion w/ Permutation ------------------------------------
+
+# Calculate the mean accuracy for each subject
+Mean_Accs <- tapply(Exp2Data$Accuracy, Exp2Data$ParticipantID , mean)
+
+# parameters
+nIterations <- 10000
+Subs <- 1:length(subjects)
+
+for (iSub in Subs) {
+  
+  NullDist <- data.frame(Acc=rep(NA,nIterations))
+  
+  for (i in 1:nIterations) {
+    # Generate 192 random responses between 1 and 4
+    Responses <- Exp2Data[Exp2Data$ParticipantID == iSub, "Response"]
+    
+    # Generate 192 random answers between 1 and 4
+    Answers <- sample(Exp2Data[Exp2Data$ParticipantID == iSub, "CorrectKey"])
+    
+    NullDist[i,1] <- ((sum(Responses == Answers))/length(Responses))*100
+  }
+  
+  # Sort distribution
+  SortedNullDist <- NullDist[order(NullDist$Acc),]
+  Significance_Threshold <- SortedNullDist[length(SortedNullDist)-nIterations*.05]
+  
+  # print(ggplot(NullDist, aes(x=Acc)) + geom_density(fill="gray") +
+  #         geom_vline(aes(xintercept = Mean_Accs[as.character(iSub)]*100),
+  #                    color="green", linetype="dashed", linewidth=1)+
+  #         geom_vline(aes(xintercept = Significance_Threshold),
+  #                    color="red", linetype="dashed", linewidth=1)+
+  #         ggtitle(paste("Sub -", as.character(iSub))))
+  
+  if ((Mean_Accs[as.character(iSub)])*100 <= Significance_Threshold) {
+    print(c(iSub,' is at chance-level!!!'))
+  }
+}
+
+
+
+# Logistic Mixed-effects Model --------------------------------------------
+
+# recode variable types
+Exp2Data$Condition <- as.factor(Exp2Data$Condition)
+Exp2Data$ParticipantID <- as.factor(Exp2Data$ParticipantID)
+Exp2Data$ClipID <- as.factor(Exp2Data$ClipID)
+
+# registered model
+Exp2.model = glmer(Accuracy ~ Condition + (1|ClipID) + (1|ParticipantID),
+                   data=Exp2Data, family = binomial)
+
+# summary and plotting
+Anova(Exp2.model)
+summary(Exp2.model)
+
+ggplot(Exp2Data,aes(x=Condition,y=Accuracy))+
+  stat_summary(fun.data=mean_cl_boot,size=2)
+
+Exp2.emm.s <- emmeans(Exp2.model,"Condition")
+#pairs(Exp2.emm.s)
+
+# Conditions within Exp2.emm.s ordered: AsyncTheta, NoFlicker, SyncDelta, SyncTheta
+# Planned comparisons for correction .05/3
+(out1 <- contrast(Exp2.emm.s, list(SyncTheta.vs.NoFlicker  = c(0, -1, 0, 1))))
+(out2 <- contrast(Exp2.emm.s, list(SyncTheta.vs.AsyncTheta = c(-1, 0, 0, 1))))
+(out3 <- contrast(Exp2.emm.s, list(SyncTheta.vs.SyncDelta  = c(0, 0, -1, 1))))
+
+(EffectSizes <- eff_size(Exp2.emm.s, sigma = sigma(Exp2.model), edf = df.residual(Exp2.model), method = "pairwise"))
+
+#Data plotting
+
+plot(Exp2.emm.s,comparisons = TRUE) +
+  ggtitle("Estimated Marginal Means")
+
+EMFrame <- data.frame(Exp2.emm.s)
+EMFrame$Condition = factor(EMFrame$Condition, levels = c("NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(EMFrame, aes(x = Condition, y = emmean, color = Condition)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.3, linewidth = 2) +
+  labs(title="Estimated Marginal Means per Condition", x = "Condition", y = "EMMs")+
+  scale_color_manual(values = c("NoFlicker" = LongNoFlickerColour, "SyncTheta" = SyncThetaColour, "AsyncTheta" = AsyncThetaColour, "SyncDelta" = SyncDeltaColour))+
+  scale_x_discrete(labels=c("NoFlicker" = "LongNoFlicker"))
+  
+# Calculate the mean accuracy for each subject
+sub_means <- tapply(Exp2Data$Accuracy, Exp2Data$ParticipantID , mean)
+# Calculate accuracy for each subject and condition
+Exp2pSub_pCondition_acc <- aggregate(Accuracy ~ ParticipantID + Condition, data = Exp2Data, mean)
+Exp2pSub_pCondition_acc$Condition = factor(Exp2pSub_pCondition_acc$Condition, levels = c("NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(Exp2pSub_pCondition_acc, aes(x = Condition, y = Accuracy, fill = Condition)) +
+  geom_violin(trim=FALSE)+
+  geom_point(size = 2, color = "gray") +
+  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
+  labs(title="Trial-Averaged Means per Conditions", x = "Condition", y = "Accuracy") + 
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black")+
+  scale_fill_manual(values = c("NoFlicker" = LongNoFlickerColour, "SyncTheta" = SyncThetaColour, "AsyncTheta" = AsyncThetaColour, "SyncDelta" = SyncDeltaColour))+
+  scale_x_discrete(labels=c("NoFlicker" = "LongNoFlicker"))
+
+#Trial-averaged test with bootstrapping
+
+# Calculate means
+(mAll <- mean(Exp2pSub_pCondition_acc$Accuracy)*100)
+(sdAll <- sd((sub_means)*100))
+(mSyncTheta <- mean(Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition=="SyncTheta"])*100)
+(mNoFlicker <- mean(Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition=="NoFlicker"])*100)
+(mAsyncTheta <- mean(Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition=="AsyncTheta"])*100)
+(mSyncDelta <- mean(Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition=="SyncDelta"])*100)
+
+SyncTheta_NoFlicker <- Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition=="SyncTheta"]*100-
+  Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition == "NoFlicker"]*100
+SyncTheta_AsyncTheta <- Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition=="SyncTheta"]*100-
+  Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition == "AsyncTheta"]*100
+SyncTheta_SyncDelta <- Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition=="SyncTheta"]*100-
+  Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition == "SyncDelta"]*100
+
+(SyncTheta_NoFlicker_out <- boot.t.test(SyncTheta_NoFlicker,
+                                        alternative = c("two.sided", "less", "greater"), 
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 10000, symmetric = FALSE))
+abs(mean(SyncTheta_NoFlicker)/sd(SyncTheta_NoFlicker)) # Cohen's d 
+
+
+(SyncTheta_AsyncTheta_out <- boot.t.test(SyncTheta_AsyncTheta,
+                                         alternative = c("two.sided", "less", "greater"),
+                                         mu = 0, paired = FALSE, var.equal = FALSE,
+                                         conf.level = 0.95, R = 10000, symmetric = FALSE))
+abs(mean(SyncTheta_AsyncTheta)/sd(SyncTheta_AsyncTheta)) # Cohen's d 
+
+(SyncTheta_SyncDelta_out <- boot.t.test(SyncTheta_SyncDelta,
+                                        alternative = c("two.sided", "less", "greater"),
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 10000, symmetric = FALSE))
+abs(mean(SyncTheta_SyncDelta)/sd(SyncTheta_SyncDelta)) # Cohen's d 
+
+
+#Synchrony Discrimination Task
+
+# Arrange long-format data
+
+# List of subject names
+subjects <- c("Sub_01", "Sub_02", "Sub_03", "Sub_04", "Sub_05", "Sub_06", 
+              "Sub_09", "Sub_10", "Sub_11", "Sub_14", "Sub_15", "Sub_17", 
+              "Sub_19", "Sub_20", "Sub_22", "Sub_23", "Sub_24", "Sub_25", 
+              "Sub_27", "Sub_29", "Sub_30", "Sub_31","Sub_32")
+nSub <- length(subjects)
+
+# Initialize vectors to store results
+nHits_pSub <- rep(NA, nSub)
+HitRate_pSub <- rep(NA, nSub)
+nFAs_pSub <- rep(NA, nSub)
+FARate_pSub <- rep(NA, nSub)
+Exp2Dprime_pSub <- rep(NA, nSub)
+Exp2Sync_subnumsnums <- rep(NA, nSub)
+
+# Loop over subjects
+for (iSub in 1:nSub) {
+  
+  # List all files in the current directory that match the pattern
+  file_name <- list.files(path = Exp2SyncDataFolder, pattern = subjects[iSub])
+  
+  Exp2SyncData <- read.csv(file.path(Exp2SyncDataFolder, file_name), header = TRUE)
+  
+  # Calculate Hit Rate
+  nHits_pSub[iSub] <- sum(Exp2SyncData$SyncRating == 1 & Exp2SyncData$Accuracy == 1)
+  HitRate_pSub[iSub] <- nHits_pSub[iSub] / sum(Exp2SyncData$SyncRating == 1)
+  
+  # Calculate False Alarm Rate
+  nFAs_pSub[iSub] <- sum(Exp2SyncData$SyncRating == 2 & Exp2SyncData$Accuracy == 0)
+  FARate_pSub[iSub] <- nFAs_pSub[iSub] / sum(Exp2SyncData$SyncRating == 2)
+  
+  # Calculate d-prime
+  Exp2Dprime_pSub[iSub] <- qnorm(HitRate_pSub[iSub]) - qnorm(FARate_pSub[iSub])
+  Exp2Sync_subnumsnums[iSub] <- Exp2SyncData$ParticipantID[iSub]
+}
+
+# Create a data frame
+Exp2DprimeData <- data.frame(ParticipantID = as.factor(Exp2Sync_subnumsnums), Dprime = Exp2Dprime_pSub)
+
+# significance test
+(DPrime_out <- boot.t.test(Exp2DprimeData$Dprime, alternative = c("two.sided", "less", "greater"),
+                           mu = 0, paired = FALSE, var.equal = FALSE, conf.level = 0.95,
+                           R = 10000, symmetric = FALSE))
+
+# Bayes analysis for sync vs async theta
+bf = ttestBF(Exp2DprimeData$Dprime, paired = FALSE)
+
+# Create a violin plot
+ggplot(data = Exp2DprimeData, aes(x = 0, y = Dprime, fill = 0)) +
+  geom_violin(width=1, fill = SyncDiscColour, color = "black") +
+  scale_x_discrete() +
+  geom_point(size = 3, color = "gray",position = position_jitterdodge()) +
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black") +
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black") +
+  labs(title = "D-prime Scores",
+       x = "Participants",
+       y = "D-prime")
+
+```
+
+## Exploratory Analysis on Exp 2
+
+```{r Block analysis, warning=FALSE, out.width="55%"}
+
+# filter data to keep only first blocks
+FirstBlockOnly <- Exp2Data[Exp2Data$BlockNumber == 1, ]
+
+FirstBlockOnly.model = glmer(Accuracy ~ Condition + (1|ClipID) + (1|ParticipantID),
+                   data=FirstBlockOnly, family = binomial)
+
+# summary and plotting
+Anova(FirstBlockOnly.model)
+summary(FirstBlockOnly.model)
+
+ggplot(FirstBlockOnly,aes(x=Condition,y=Accuracy))+
+  stat_summary(fun.data=mean_cl_boot,size=2)
+
+FirstBlockOnly.emm.s <- emmeans(FirstBlockOnly.model,"Condition")
+#pairs(Exp2.emm.s)
+
+# Conditions within Exp2.emm.s ordered: AsyncTheta, NoFlicker, SyncDelta, SyncTheta
+# Planned comparisons for correction .05/3
+(out1 <- contrast(FirstBlockOnly.emm.s, list(SyncTheta.vs.NoFlicker  = c(0, -1, 0, 1))))
+(out2 <- contrast(FirstBlockOnly.emm.s, list(SyncTheta.vs.AsyncTheta = c(-1, 0, 0, 1))))
+(out3 <- contrast(FirstBlockOnly.emm.s, list(SyncTheta.vs.SyncDelta  = c(0, 0, -1, 1))))
+
+(EffectSizes <- eff_size(FirstBlockOnly.emm.s, sigma = sigma(FirstBlockOnly.model), 
+                         edf = df.residual(FirstBlockOnly.model), method = "pairwise"))
+
+# Block and Condition interaction model
+Exp2.modelBlock = glmer(Accuracy ~ Condition*poly(BlockNumber,2) + (1|ClipID) + (1|ParticipantID),
+                   data=Exp2Data, family = binomial)
+
+Anova(Exp2.modelBlock)
+summary(Exp2.modelBlock)
+
+```
+
+```{r Participant Exclusion based on Theta, warning=FALSE, out.width="55%"}
+
+# Calculate the mean accuracy for each subjects' theta conditions
+ThetaExp2Data <- Exp2Data[Exp2Data$Condition == "SyncTheta" | Exp2Data$Condition == "AsyncTheta",]
+ThetaMean_Accs <- tapply(ThetaExp2Data$Accuracy, ThetaExp2Data$ParticipantID , mean)
+
+for (iSub in Subs) {
+
+  NullDist <- data.frame(Acc=rep(NA,nIterations))
+
+  for (i in 1:nIterations) {
+    # Generate 192 random responses between 1 and 4
+    Responses <- Exp2Data[Exp2Data$ParticipantID == iSub, "Response"]
+
+    # Generate 192 random answers between 1 and 4
+    Answers <- sample(Exp2Data[Exp2Data$ParticipantID == iSub, "CorrectKey"])
+
+    NullDist[i,1] <- ((sum(Responses == Answers))/length(Responses))*100
+  }
+
+  # Sort distribution
+  SortedNullDist <- NullDist[order(NullDist$Acc),]
+  Significance_Threshold <- SortedNullDist[length(SortedNullDist)-nIterations*.05]
+
+  if ((ThetaMean_Accs[as.character(iSub)])*100 <= Significance_Threshold) {
+    print(c(iSub,' is at chance-level!!!'))
+  }
+
+}
+
+excludedExp2Data <- Exp2Data[!(Exp2Data$ParticipantID %in% c(2, 12, 14)),]
+
+excludedExp2.model = glmer(Accuracy ~ Condition + (1|ClipID) + (1|ParticipantID),
+                   data=excludedExp2Data, family = binomial)
+
+Anova(excludedExp2.model)
+summary(excludedExp2.model)
+
+ggplot(excludedExp2Data,aes(x=Condition, y=Accuracy))+
+  stat_summary(fun.data=mean_cl_boot, size=2)+
+  labs(title = "Trial-averaged Accuracies per Condition 
+       (With participant exclusions (3) from theta conditions' accuracies)")
+
+excludedExp2.emm.s <- emmeans(excludedExp2.model,"Condition")
+
+# Conditions within Exp2.emm.s ordered: AsyncTheta, NoFlicker, SyncDelta, SyncTheta
+# Planned comparisons for correction .05/3
+(out1 <- contrast(excludedExp2.emm.s, list(SyncTheta.vs.NoFlicker  = c(0, -1, 0, 1))))
+(out2 <- contrast(excludedExp2.emm.s, list(SyncTheta.vs.AsyncTheta = c(-1, 0, 0, 1))))
+(out3 <- contrast(excludedExp2.emm.s, list(SyncTheta.vs.SyncDelta  = c(0, 0, -1, 1))))
+
+```
+
+```{r Rating Analysis, warning=FALSE, out.width="55%"}
+# Rating as random intercept----------------------
+
+# Calculate the mean accuracy for each subject
+sub_Ratingmeans <- tapply(Exp2Data$Rating, Exp2Data$ParticipantID , mean)
+# Calculate accuracy for each subject and condition
+pSub_pCondition_rating <- aggregate(Rating ~ ParticipantID + Condition, data = Exp2Data, mean)
+pSub_pCondition_rating$Condition = factor(pSub_pCondition_rating$Condition, levels = c("SyncTheta", "NoFlicker", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(pSub_pCondition_rating, aes(x = Condition, y = Rating, fill = Condition)) +
+  geom_violin(trim=FALSE)+
+  geom_point(size = 2, color = "gray") +
+  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
+  labs(title="Trial-Averaged Means per Conditions", x = "Condition", y = "Rating") + 
+  stat_summary(fun.pSub_pCondition_rating = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black", conf_level = 0.95) +
+  stat_summary(fun.pSub_pCondition_rating = "mean", geom = "point", size = 2, color = "black")
+
+# cor(Exp2Data$Rating, Exp2Data$Accuracy)
+# 
+# ggplot(Exp2Data, aes(x=Rating, y=Accuracy)) + 
+#   geom_point()+
+#   geom_smooth(method=lm)
+
+# Model with Rating as random effect
+Exp2.modelofRating = glmer(Rating ~ Condition + (1|ClipID) + (1|ParticipantID),
+                   data=Exp2Data)
+Anova(Exp2.modelofRating)
+summary(Exp2.modelofRating)
+
+Exp2.emm.sofRating <- emmeans(Exp2.modelofRating,"Condition")
+#pairs(Exp2.emm.s)
+
+# Conditions within Exp2.emm.s ordered: AsyncTheta, NoFlicker, SyncDelta, SyncTheta
+# Planned comparisons for correction .05/3
+(out1 <- contrast(Exp2.emm.sofRating, list(SyncTheta.vs.NoFlicker  = c(0, -1, 0, 1))))
+(out2 <- contrast(Exp2.emm.sofRating, list(SyncTheta.vs.AsyncTheta = c(-1, 0, 0, 1))))
+(out3 <- contrast(Exp2.emm.sofRating, list(SyncTheta.vs.SyncDelta  = c(0, 0, -1, 1))))
+
+(EffectSizes <- eff_size(Exp2.emm.sofRating, sigma = sigma(Exp2.modelofRating),
+                         edf = df.residual(Exp2.modelofRating), method = "pairwise"))
+
+
+
+Exp2Data$RatingFactor = as.factor(Exp2Data$Rating)
+
+# Model with Rating as random effect
+Exp2.modelwRating = glmer(Accuracy ~ Condition*poly(RatingFactor,2) + (1|ClipID) + (1|ParticipantID),
+                   data=Exp2Data, family = binomial)
+
+Anova(Exp2.modelwRating)
+summary(Exp2.modelwRating)
+
+Exp2.emm.swRating <- emmeans(Exp2.modelwRating,"Condition")
+
+# Conditions within Exp2.emm.s ordered: AsyncTheta, NoFlicker, SyncDelta, SyncTheta
+# Planned comparisons for correction .05/3
+(out1 <- contrast(Exp2.emm.swRating, list(SyncTheta.vs.NoFlicker  = c(0, -1, 0, 1))))
+(out2 <- contrast(Exp2.emm.swRating, list(SyncTheta.vs.AsyncTheta = c(-1, 0, 0, 1))))
+(out3 <- contrast(Exp2.emm.swRating, list(SyncTheta.vs.SyncDelta  = c(0, 0, -1, 1))))
+
+(EffectSizes <- eff_size(Exp2.emm.swRating, sigma = sigma(Exp2.modelwRating),
+                         edf = df.residual(Exp2.modelwRating), method = "pairwise"))
+
+RatingEMFrame <- data.frame(Exp2.emm.swRating)
+RatingEMFrame$Condition = factor(RatingEMFrame$Condition, levels = c("SyncTheta", "NoFlicker", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(RatingEMFrame, aes(x = Condition, y = emmean, color = Condition)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.3, linewidth = 2) +
+  labs(title="Estimated Marginal Means per Condition", x = "Condition", y = "EMMs")
+
+plot(Exp2.emm.swRating, comparisons = TRUE) +
+  ggtitle("Estimated Marginal Means")
+
+# Dprime & Accuracy correlation
+
+# select the participants with Dprime
+Exp2DatawDprime <- Exp2pSub_pCondition_acc[Exp2pSub_pCondition_acc$ParticipantID %in% c(Exp2Sync_subnumsnums),]
+
+Theta_means <- aggregate(Accuracy ~ Condition*ParticipantID, data = Exp2DatawDprime, FUN = mean)
+STheta_means <- Theta_means[Theta_means == "SyncTheta",]
+ATheta_means <- Theta_means[Theta_means == "AsyncTheta",]
+Exp2TIMEEffect <- STheta_means$Accuracy - ATheta_means$Accuracy
+
+cor(Exp2DprimeData$Dprime, Exp2TIMEEffect, method = "pearson")
+cor.test(Exp2DprimeData$Dprime, Exp2TIMEEffect, method = "pearson")
+
+DprimewTIME <- data.frame(DPrime = Exp2DprimeData$Dprime, Exp2TIMEEffect)
+
+ggplot(DprimewTIME, aes(x=scale(DPrime), y=scale(Exp2TIMEEffect))) +
+  geom_point()+
+  geom_smooth(method=lm)+
+  labs(x = "D-Prime", y = "TIME Effect")
+
+```
+
+```{r Exp3 Main analysis,message=FALSE, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# List of subject names
+subjects <- c("Sub_01", "Sub_02", "Sub_03", "Sub_04", "Sub_05", "Sub_06", "Sub_07",
+              "Sub_08", "Sub_09", "Sub_10", "Sub_11", "Sub_12", "Sub_13", "Sub_14",
+              "Sub_15", "Sub_16", "Sub_17", "Sub_18", "Sub_19", "Sub_20", "Sub_21",
+              "Sub_22", "Sub_23", "Sub_24", "Sub_25", "Sub_26", "Sub_27", "Sub_28",
+              "Sub_29", "Sub_30", "Sub_31", "Sub_32", "Sub_33", "Sub_34", "Sub_35",
+              "Sub_36", "Sub_37", "Sub_38")
+
+# Initialize data frame
+Exp3Data <- data.frame()
+
+# Loop through subjects to fetch the data
+for (iSub in 1:length(subjects)) {
+  # Define file name
+  File_pattern <- list.files(path = Exp3DataFolder, pattern = subjects[iSub])
+  
+  # Read the CSV file
+  sub_data <- read.csv(file.path(Exp3DataFolder, File_pattern), header = TRUE)
+  
+  # Add subject data into the data data
+  Exp3Data <- rbind(Exp3Data, sub_data)
+}
+
+# Participant Exclusion w/ Permutation ------------------------------------
+
+# Calculate the mean accuracy for each subject
+Mean_Accs <- tapply(Exp3Data$Accuracy, Exp3Data$ParticipantID , mean)
+
+# parameters
+nIterations <- 10000
+Subs <- 1:length(subjects)
+
+# Check if subject has less trials than it is supposed to be
+for (iSub in Subs) {
+  
+  nRows = na.omit(Exp3Data[Exp3Data$ParticipantID == iSub,])
+  
+  if (dim(nRows)[1] < 192) {
+    print(paste("Sub", iSub, "has", dim(nRows)[1]), sep = "")
+  }
+}
+
+
+# Loop through subjects to test whether they performed near chance-level
+for (iSub in Subs) {
+  
+  NullDist <- data.frame(Acc=rep(NA,nIterations))
+  
+  for (i in 1:nIterations) {
+    # Generate 192 random responses between 1 and 4
+    Responses <- na.omit(Exp3Data[Exp3Data$ParticipantID == iSub, "Response"])
+    
+    # Generate 192 random answers between 1 and 4
+    Answers <- sample(na.omit(Exp3Data[Exp3Data$ParticipantID == iSub, "CorrectKey"]))
+    
+    NullDist[i,1] <- ((sum(Responses == Answers))/length(Responses))*100
+  }
+  
+  # Sort distribution
+  SortedNullDist <- NullDist[order(NullDist$Acc),]
+  Significance_Threshold <- SortedNullDist[length(SortedNullDist)-nIterations*.05]
+  
+  print(ggplot(NullDist, aes(x=Acc)) + geom_density(fill="gray") +
+          geom_vline(aes(xintercept = Mean_Accs[as.character(iSub)]*100),
+                     color="green", linetype="dashed", linewidth=1)+
+          geom_vline(aes(xintercept = Significance_Threshold),
+                     color="red", linetype="dashed", linewidth=1)+
+          ggtitle(paste("Sub -", as.character(iSub))))
+  
+  if ((Mean_Accs[as.character(iSub)])*100 <= Significance_Threshold) {
+    print(paste("Sub", iSub,' is at chance-level!!!'))
+  }
+}
+
+# Load only non-excluded participants
+# 2, 5, and 15 have too many missing data
+# 5, 11, 15, 22, and 34 below performance threshold
+subjects <- c("Sub_01", "Sub_03", "Sub_04", "Sub_06", "Sub_07",
+              "Sub_08", "Sub_09", "Sub_10", "Sub_12", "Sub_13", "Sub_14",
+              "Sub_16", "Sub_17", "Sub_18", "Sub_19", "Sub_20", "Sub_21",
+              "Sub_23", "Sub_24", "Sub_25", "Sub_26", "Sub_27",
+              "Sub_28", "Sub_29", "Sub_30", "Sub_31", "Sub_32", "Sub_33",
+              "Sub_35", "Sub_36", "Sub_37", "Sub_38")
+
+# Initialize data frame
+Exp3Data <- data.frame()
+
+# Load demographic data
+DemogData <- read.csv("ParticipantDemographics.csv")
+
+# Loop through subjects
+for (iSub in 1:length(subjects)) {
+  # Define file name
+  File_pattern <- list.files(path = Exp3DataFolder, pattern = subjects[iSub])
+  
+  # Read the CSV file
+  sub_data <- read.csv(file.path(Exp3DataFolder, File_pattern), header = TRUE)
+  
+  # Get demographics
+  NRows <- nrow(sub_data)
+  Age <- rep(DemogData[iSub, 3], NRows)
+  Female <- rep(as.integer(DemogData[iSub, 4] == "Female"), NRows)
+  RightHanded <- rep(as.integer(DemogData[iSub, 5] == "Right"), NRows)
+  
+  sub_data$Age <- Age
+  sub_data$Female <- Female
+  sub_data$RightHanded <- RightHanded
+  
+  # Combine the subject's runs with the overall combined data
+  Exp3Data <- rbind(Exp3Data, sub_data)
+}
+
+# Get demographic info
+nFemale <- sum(aggregate(Female ~ ParticipantID, data = Exp3Data, median)$Female)
+mAge <- mean(aggregate(Age ~ ParticipantID, data = Exp3Data, median)$Age)
+sdAge <- sd(aggregate(Age ~ ParticipantID, data = Exp3Data, median)$Age)
+rangeAge <- range(aggregate(Age ~ ParticipantID, data = Exp3Data, median)$Age)
+
+
+# Logistic Mixed-effects Model --------------------------------------------
+
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# recode variable types
+Exp3Data$Condition <- as.factor(Exp3Data$Condition)
+Exp3Data$ParticipantID <- as.factor(Exp3Data$ParticipantID)
+Exp3Data$ClipID <- as.factor(Exp3Data$ClipID)
+
+# registered model
+TIME.model = glmer(Accuracy ~ Condition + (1|ClipID) + (1|ParticipantID),
+                   data=Exp3Data, family = binomial)
+
+# summary and plotting
+Anova(TIME.model)
+summary(TIME.model)
+
+ggplot(Exp3Data,aes(x=Condition,y=Accuracy))+
+  stat_summary(fun.data=mean_cl_boot,size=2)
+
+TIME.emm.s <- emmeans(TIME.model, "Condition")
+pairs(TIME.emm.s)
+
+# Conditions within TIME.emm.s ordered: AsyncTheta, NoFlickerFull, NoFlickerHalf, SyncTheta
+# Planned comparisons
+(out1 <- contrast(TIME.emm.s, list(SyncTheta.vs.NoFlickerFull  = c(0, -1, 0, 1))))
+(out2 <- contrast(TIME.emm.s, list(SyncTheta.vs.AsyncTheta = c(-1, 0, 0, 1))))
+(out3 <- contrast(TIME.emm.s, list(SyncTheta.vs.NoFlickerHalf  = c(0, 0, -1, 1))))
+(out4 <- contrast(TIME.emm.s, list(AsyncTheta.vs.NoFlickerFull = c(1, -1, 0, 0))))
+(out5 <- contrast(TIME.emm.s, list(AsyncTheta.vs.NoFlickerHalf  = c(1, 0, -1, 0))))
+(out6 <- contrast(TIME.emm.s, list(NoFlickerFull.vs.NoFlickerHalf  = c(0, 1, -1, 0))))
+
+(EffectSizes <- eff_size(TIME.emm.s, sigma = sigma(TIME.model), edf = df.residual(TIME.model), method = "pairwise"))
+
+# Calculate the mean accuracy for each subject
+sub_means <- tapply(Exp3Data$Accuracy, Exp3Data$ParticipantID , mean)
+# Calculate accuracy for each subject and condition
+Exp3pSub_pCondition_acc <- aggregate(Accuracy ~ ParticipantID + Condition, data = Exp3Data, mean)
+Exp3pSub_pCondition_acc$Condition = factor(Exp3pSub_pCondition_acc$Condition, levels = c( "NoFlickerFull", "NoFlickerHalf", "SyncTheta", "AsyncTheta"), ordered = FALSE)
+
+# Bayes analysis for sync vs async theta
+bf = ttestBF(Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "SyncTheta",]$Accuracy, Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "AsyncTheta",]$Accuracy, paired = TRUE)
+
+1/bf
+
+# Bayes analysis for full vs half duration no-flicker
+bf = ttestBF(Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "NoFlickerFull",]$Accuracy, Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "NoFlickerHalf",]$Accuracy, paired = TRUE)
+
+bf
+
+# Plot EMMs
+EMFrame <- data.frame(TIME.emm.s)
+EMFrame$Condition = factor(EMFrame$Condition, levels = c("NoFlickerFull", "NoFlickerHalf", "SyncTheta", "AsyncTheta"), ordered = FALSE)
+
+ggplot(EMFrame, aes(x = Condition, y = emmean, color = Condition)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.3, linewidth = 2) +
+  labs(title="Estimated Marginal Means per Condition", x = "Condition", y = "EMMs")+
+  scale_color_manual(values = c("NoFlickerFull" = LongNoFlickerColour, "SyncTheta" = SyncThetaColour, "AsyncTheta" = AsyncThetaColour, "NoFlickerHalf" = ShortNoFlickerColour))+
+  scale_x_discrete(labels=c("NoFlickerFull" = "LongNoFlicker", "NoFlickerHalf" = "ShortNoFlicker"))
+
+# Plot trial-averaged means
+ggplot(Exp3pSub_pCondition_acc, aes(x = Condition, y = Accuracy, fill = Condition)) +
+  geom_violin(trim=FALSE)+
+  geom_point(size = 2, color = "gray") +
+  geom_line(aes(group = ParticipantID), color = "gray", size = .7) +
+  labs(title="Trial-Averaged Means per Conditions", x = "Condition", y = "Accuracy") +
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black")+
+  scale_fill_manual(values = c("NoFlickerFull" = LongNoFlickerColour, "SyncTheta" = SyncThetaColour, "AsyncTheta" = AsyncThetaColour, "NoFlickerHalf" = ShortNoFlickerColour))+
+  scale_x_discrete(labels=c("NoFlickerFull" = "LongNoFlicker", "NoFlickerHalf" = "ShortNoFlicker"))
+  
+#ggsave("Rawmeans.tiff", dpi = 300)
+
+# Run bootstrapping t-tests
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# Calculate means
+mAll <- mean(Exp3pSub_pCondition_acc$Accuracy)*100
+sdAll <- sd((sub_means)*100)
+mSyncTheta <- mean(Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="SyncTheta"])*100
+mNoFlicker <- mean(Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="NoFlickerFull"])*100
+mAsyncTheta <- mean(Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="AsyncTheta"])*100
+mSyncDelta <- mean(Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="NoFlickerHalf"])*100
+
+SyncTheta_NoFlickerFull <- Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="SyncTheta"]*100-
+  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition == "NoFlickerFull"]*100
+SyncTheta_AsyncTheta <- 
+  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="SyncTheta"]*100-
+  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition == "AsyncTheta"]*100
+SyncTheta_NoFlickerHalf <- Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="AsyncTheta"]*100-
+  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition == "NoFlickerHalf"]*100
+AsyncTheta_NoFlickerHalf <- Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="SyncTheta"]*100-
+  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition == "NoFlickerHalf"]*100
+NoFlickerFull_NoFlickerHalf <- Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition=="NoFlickerFull"]*100-
+  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition == "NoFlickerHalf"]*100
+
+
+(SyncTheta_NoFlickerHalf_out <- boot.t.test(SyncTheta_NoFlickerHalf,
+                                        alternative = c("two.sided", "less", "greater"),
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+abs(mean(SyncTheta_NoFlickerHalf)/sd(SyncTheta_NoFlickerHalf)) # Cohen's d
+
+(SyncTheta_NoFlickerFull_out <- boot.t.test(SyncTheta_NoFlickerFull,
+                                        alternative = c("two.sided", "less", "greater"), 
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+abs(mean(SyncTheta_NoFlickerFull)/sd(SyncTheta_NoFlickerFull)) # Cohen's d 
+
+
+(SyncTheta_AsyncTheta_out <- boot.t.test(SyncTheta_AsyncTheta,
+                                         alternative = c("two.sided", "less", "greater"),
+                                         mu = 0, paired = FALSE, var.equal = FALSE,
+                                         conf.level = 0.95, R = 100000, symmetric = FALSE))
+abs(mean(SyncTheta_AsyncTheta)/sd(SyncTheta_AsyncTheta)) # Cohen's d 
+
+(AsyncTheta_NoFlickerHalf_out <- boot.t.test(AsyncTheta_NoFlickerHalf,
+                                        alternative = c("two.sided", "less", "greater"),
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+abs(mean(AsyncTheta_NoFlickerHalf)/sd(AsyncTheta_NoFlickerHalf)) # Cohen's d
+
+(NoFlickerFull_NoFlickerHalf_out <- boot.t.test(NoFlickerFull_NoFlickerHalf,
+                                        alternative = c("two.sided", "less", "greater"),
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+abs(mean(NoFlickerFull_NoFlickerHalf)/sd(NoFlickerFull_NoFlickerHalf)) # Cohen's d 
+
+```
+
+```{r Exp3 Synchrony Discrimination Task, warning=FALSE, out.width="55%"}
+
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# Arrange long-format data
+
+# List of subject names
+subjects <- c("Sub_01", "Sub_03", "Sub_04", "Sub_06", "Sub_07",
+              "Sub_08", "Sub_09", "Sub_10", "Sub_12", "Sub_13", "Sub_14",
+              "Sub_16", "Sub_17", "Sub_18", "Sub_19", "Sub_20", "Sub_21",
+              "Sub_23", "Sub_24", "Sub_25", "Sub_26", "Sub_27",
+              "Sub_28", "Sub_29", "Sub_30", "Sub_31", "Sub_32", "Sub_33",
+              "Sub_35", "Sub_36", "Sub_37", "Sub_38")
+nSub <- length(subjects)
+
+# Initialize vectors to store results
+nHits_pSub <- rep(NA, nSub)
+HitRate_pSub <- rep(NA, nSub)
+nFAs_pSub <- rep(NA, nSub)
+FARate_pSub <- rep(NA, nSub)
+Exp3Dprime_pSub <- rep(NA, nSub)
+Exp3Sync_subnums <- rep(NA, nSub)
+
+# Loop over subjects
+for (iSub in 1:nSub) {
+  
+  # List all files in the current directory that match the pattern
+  file_name <- list.files(path = Exp3SyncDataFolder, pattern = subjects[iSub])
+  
+  Exp3SyncData <- read.csv(file.path(Exp3SyncDataFolder, file_name), header = TRUE)
+  
+  # Calculate Hit Rate
+  nHits_pSub[iSub] <- sum(Exp3SyncData$SyncRating == 1 & Exp3SyncData$Accuracy == 1)
+  HitRate_pSub[iSub] <- nHits_pSub[iSub] / sum(Exp3SyncData$SyncRating == 1)
+  
+  # Calculate False Alarm Rate
+  nFAs_pSub[iSub] <- sum(Exp3SyncData$SyncRating == 2 & Exp3SyncData$Accuracy == 0)
+  FARate_pSub[iSub] <- nFAs_pSub[iSub] / sum(Exp3SyncData$SyncRating == 2)
+  
+  # Calculate d-prime
+  Exp3Dprime_pSub[iSub] <- qnorm(HitRate_pSub[iSub]) - qnorm(FARate_pSub[iSub])
+  Exp3Sync_subnums[iSub] <- Exp3SyncData$ParticipantID[iSub]
+}
+
+# Create a data frame
+Exp3DprimeData <- data.frame(ParticipantID = as.factor(Exp3Sync_subnums), Dprime = Exp3Dprime_pSub)
+
+# significance test
+(DPrime_out <- boot.t.test(Exp3DprimeData$Dprime, alternative = c("two.sided", "less", "greater"),
+                           mu = 0, paired = FALSE, var.equal = FALSE, conf.level = 0.95,
+                           R = 100000, symmetric = FALSE))
+
+
+
+# Create a violin plot
+
+ggplot(data = Exp3DprimeData, aes(x = 0, y = Dprime, fill = 0)) +
+  geom_violin(width=1, fill = SyncDiscColour, color = "black") +
+  scale_x_discrete( ) +
+  geom_point(size = 3, color = "gray",position = position_jitterdodge()) +
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black") +
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black") +
+  labs(title = "D-prime Scores",
+       x = "Participants",
+       y = "D-prime")
+
+```
+
+```{r MixedvsBlocked, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# Calculate accuracy for each subject and condition
+Exp2pSub_pCondition_acc <- aggregate(Accuracy ~ ParticipantID + Condition, data = Exp2Data, mean)
+Exp2pSub_pCondition_acc$Condition = factor(Exp2pSub_pCondition_acc$Condition, levels = c( "NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+Exp2_SyncTheta <- Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition == "SyncTheta"]*100
+Exp2_AsyncTheta <- Exp2pSub_pCondition_acc$Accuracy[Exp2pSub_pCondition_acc$Condition == "AsyncTheta"]*100
+Exp2_Sync_Async <- Exp2_SyncTheta - Exp2_AsyncTheta
+
+Exp3SyncTheta <-  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition == "SyncTheta"]*100
+Exp3AsyncTheta <-  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition == "AsyncTheta"]*100
+Exp3Sync_Async <- Exp3SyncTheta -Exp3AsyncTheta
+
+(MixedVsBlocked <- boot.t.test(Exp3Sync_Async, Exp2_Sync_Async,
+                                        alternative = c("two.sided", "less", "greater"), 
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+
+
+MixedandBlocked <- data.frame(c(Exp3Sync_Async,Exp2_Sync_Async),c(rep("Mixed",32), rep("Blocked",32)))
+colnames(MixedandBlocked) <- c("Accuracy", "MixedBlocked")
+
+bf = ttestBF(formula = Accuracy ~ MixedBlocked, data = MixedandBlocked, paired = FALSE)
+
+1/bf
+
+ggplot(MixedandBlocked, aes(x = MixedBlocked, y = Accuracy)) +
+  geom_violin(trim=FALSE, fill = "lightgray")+
+  geom_point(size = 2, color = "gray45", position = position_dodge2(width = .2)) +
+  labs(y = "Sync-Async Accuracy")+
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black")+
+  theme(text = element_text(size=20))+
+  scale_fill_grey()
+
+```
+
+```{r TIME effect (Collapsed across Exp 2 and 3), warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+
+Exp23_sync_async <- rbind(Exp2pSub_pCondition_acc, Exp3pSub_pCondition_acc)
+Exp23_sync_async <- subset(Exp23_sync_async, select = c(Condition, Accuracy))
+Exp23_sync_async$Accuracy <- Exp23_sync_async$Accuracy*100
+
+SyncAsyncDiff <- Exp23_sync_async[Exp23_sync_async$Condition == "SyncTheta",]$Accuracy -
+           Exp23_sync_async[Exp23_sync_async$Condition == "AsyncTheta",]$Accuracy
+
+(Exp23_syncVSasync <- boot.t.test(SyncAsyncDiff,
+                                        alternative = c("two.sided", "less", "greater"), 
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+
+abs(mean(SyncAsyncDiff)/sd(SyncAsyncDiff)) # Cohen's d
+
+bf = ttestBF(SyncAsyncDiff, paired = FALSE)
+
+1/bf
+
+Exp23_sync_asyncDiff <- data.frame(SyncAsyncDiff)
+
+ggplot(data = Exp23_sync_asyncDiff, aes(x = 0, y = SyncAsyncDiff, fill = 0)) +
+  geom_violin(width=1, fill = "lightgray") +
+  scale_x_discrete( ) +
+    geom_point(size = 3, color = "gray45", position = position_dodge2(width = .5)) +
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black") +
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black") +
+  labs(x = "Participants",
+       y = "Sync-Async Difference")+
+  theme(text = element_text(size=20))
+
+```
+
+```{r CloutervsExp3, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# select the participants with Dprime
+ClouterBaseline <- read.csv("Clouter_baseline.csv")
+
+
+Clouter_NoFlickerHalf <- ClouterBaseline$AvgCorrect[ClouterBaseline$x6 == "half-length"]
+
+NewNoFlickerHalf <-  Exp3pSub_pCondition_acc$Accuracy[Exp3pSub_pCondition_acc$Condition == "NoFlickerHalf"]
+
+(CloutervsExp3 <- boot.t.test(Clouter_NoFlickerHalf, NewNoFlickerHalf,
+                                        alternative = c("two.sided", "less", "greater"), 
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+
+# Cohen's d
+((mean(Clouter_NoFlickerHalf)-mean(NewNoFlickerHalf))/sqrt((var(Clouter_NoFlickerHalf)+var(NewNoFlickerHalf))/2))
+
+ClouterandExp3 <- data.frame(c(Clouter_NoFlickerHalf, NewNoFlickerHalf), c(rep("Clouter et al.",length(Clouter_NoFlickerHalf)), rep("Exp3",length(NewNoFlickerHalf))))
+
+colnames(ClouterandExp3) <- c("Accuracy", "Experiment")
+
+ggplot(ClouterandExp3, aes(x = Experiment, y = Accuracy)) +
+  geom_violin(trim=FALSE, fill = "lightgray")+
+  geom_point(size = 2, color = "gray45", position = position_dodge2(width = .2)) +
+  labs(x = "Experiment", y = "Baseline (Short) Accuracy")+
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black")+
+  theme(text = element_text(size=20))+
+  scale_fill_grey()
+
+
+```
+
+```{r Median-split on no-flicker accuracy, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# Average long and short no-flicker accuracies for each participant in Exp3 and combine with Exp2 participants' no-flicker accuracies (N = 64)
+Exp1_2NoFlicker <- c(Exp2pSub_pCondition_acc[Exp2pSub_pCondition_acc$Condition == "NoFlicker",]$Accuracy, rowMeans(cbind(Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "NoFlickerHalf",]$Accuracy,Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "NoFlickerFull",]$Accuracy)))
+
+# Get the median value but by through sorting as there are repeating scores near median
+#
+Exp1_2_Sync <- c(Exp2pSub_pCondition_acc[Exp2pSub_pCondition_acc$Condition == "SyncTheta",]$Accuracy, Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "SyncTheta",]$Accuracy)
+Exp1_2_Async <- c(Exp2pSub_pCondition_acc[Exp2pSub_pCondition_acc$Condition == "AsyncTheta",]$Accuracy, Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "AsyncTheta",]$Accuracy)
+
+# Get theta conditions' accuracies for participants above median 
+HighAcc_Sync <- Exp1_2_Sync[order(Exp1_2NoFlicker)[33:64]]*100
+
+HighAcc_Async <- Exp1_2_Async[order(Exp1_2NoFlicker)[33:64]]*100
+
+# Get theta conditions' accuracies for participants below median 
+LowAcc_Sync <- Exp1_2_Sync[order(Exp1_2NoFlicker)[1:32]]*100
+
+LowAcc_Async <- Exp1_2_Async[order(Exp1_2NoFlicker)[1:32]]*100
+
+# Take the difference of Sync and Async theta
+HighAcc_Sync_Async <- HighAcc_Sync - HighAcc_Async
+LowAcc_Sync_Async <- LowAcc_Sync - LowAcc_Async
+
+(HighvsLowPerf <- boot.t.test(HighAcc_Sync_Async, LowAcc_Sync_Async,
+                                        alternative = c("two.sided", "less", "greater"), 
+                                        mu = 0, paired = FALSE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+
+HighLowPerf_SyncAsync <- data.frame(c(HighAcc_Sync_Async,LowAcc_Sync_Async),c(rep("High",32), rep("Low",32)))
+colnames(HighLowPerf_SyncAsync) <- c("Accuracy", "Performance")
+
+bf = ttestBF(formula = Accuracy ~ Performance, data = HighLowPerf_SyncAsync, paired = FALSE)
+
+1/bf
+
+# plot
+HighandLowPerf <- data.frame(c(HighAcc_Sync_Async,LowAcc_Sync_Async),c(rep("HighPerformance",length(HighAcc_Sync_Async)), rep("LowPerformance",length(LowAcc_Sync_Async))))
+colnames(HighandLowPerf) <- c("SyncAsync", "HighLowMedian")
+
+ggplot(HighandLowPerf, aes(x = HighLowMedian, y = SyncAsync)) +
+  geom_violin(trim=FALSE, fill = "lightgray")+
+  geom_point(size = 2, color = "gray45", position = position_dodge2(width = .2)) +
+  labs(x = paste("Performance Group"), y = "Sync - Async Accuracy")+
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black")+
+  theme(text = element_text(size=20))+
+  scale_fill_grey()
+
+```
+
+```{r Rating analysis, warning=FALSE, out.width="55%"}
+# Rating Analysis
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# Rating as random intercept----------------------
+
+# Calculate the mean accuracy for each subject
+sub_Ratingmeans <- tapply(Exp3Data$Rating, Exp3Data$ParticipantID , mean)
+# Calculate accuracy for each subject and condition
+pSub_pCondition_rating <- aggregate(Rating ~ ParticipantID + Condition, data = Exp3Data, mean)
+pSub_pCondition_rating$Condition = factor(pSub_pCondition_rating$Condition, levels = c( "NoFlickerFull", "NoFlickerHalf","SyncTheta","AsyncTheta"), ordered = FALSE)
+
+ggplot(pSub_pCondition_rating, aes(x = Condition, y = Rating, fill = Condition)) +
+  geom_violin(trim=FALSE)+
+  geom_point(size = 2, color = "gray") +
+  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
+  labs(title="Trial-Averaged Means per Conditions", x = "Condition", y = "Rating") + 
+  stat_summary(fun.pSub_pCondition_rating = mean_cl_normal, geom = "errorbar", width = 0.1, color = "black", conf_level = 0.95) +
+  stat_summary(fun.pSub_pCondition_rating = mean, geom = "point", size = 2, color = "black")
+
+# cor(Exp3Data$Rating, Exp3Data$Accuracy)
+# 
+# ggplot(Exp3Data, aes(x=Rating, y=Accuracy)) + 
+#   geom_point()+
+#   geom_smooth(method=lm)
+
+# Model with Rating as random effect
+TIME.Rating = glmer(Rating ~ Condition + (1|ClipID) + (1|ParticipantID),
+                   data=Exp3Data)
+Anova(TIME.Rating)
+summary(TIME.Rating)
+
+TIME.emm.Rating <- emmeans(TIME.Rating, "Condition")
+pairs(TIME.emm.Rating)
+
+# Conditions within TIME.emm.s ordered: AsyncTheta, NoFlicker, SyncDelta, SyncTheta
+# Planned comparisons for correction .05/3
+(out1 <- contrast(TIME.emm.Rating, list(SyncTheta.vs.NoFlicker  = c(0, -1, 0, 1))))
+(out2 <- contrast(TIME.emm.Rating, list(SyncTheta.vs.AsyncTheta = c(-1, 0, 0, 1))))
+(out3 <- contrast(TIME.emm.Rating, list(SyncTheta.vs.SyncDelta  = c(0, 0, -1, 1))))
+
+(EffectSizes <- eff_size(TIME.emm.Rating, sigma = sigma(TIME.Rating),
+                         edf = df.residual(TIME.Rating), method = "pairwise"))
+
+Exp3Data$RatingFactor = as.factor(Exp3Data$Rating)
+
+# Model with Rating as random effect
+TIME.modelwRating = glmer(Accuracy ~ Condition*poly(RatingFactor,2) + (1|ClipID) + (1|ParticipantID),
+                   data=Exp3Data, family = binomial)
+
+Anova(TIME.modelwRating)
+summary(TIME.modelwRating)
+
+TIME.emm.swRating <- emmeans(TIME.modelwRating,"Condition")
+pairs(TIME.emm.swRating)
+
+# Conditions within TIME.emm.s ordered: AsyncTheta, NoFlicker, SyncDelta, SyncTheta
+# Planned comparisons for correction .05/3
+(out1 <- contrast(TIME.emm.swRating, list(SyncTheta.vs.NoFlicker  = c(0, -1, 0, 1))))
+(out2 <- contrast(TIME.emm.swRating, list(SyncTheta.vs.AsyncTheta = c(-1, 0, 0, 1))))
+(out3 <- contrast(TIME.emm.swRating, list(SyncTheta.vs.SyncDelta  = c(0, 0, -1, 1))))
+
+(EffectSizes <- eff_size(TIME.emm.swRating, sigma = sigma(TIME.modelwRating),
+                         edf = df.residual(TIME.modelwRating), method = "pairwise"))
+
+RatingEMFrame <- data.frame(TIME.emm.swRating)
+RatingEMFrame$Condition = factor(RatingEMFrame$Condition, levels = c("SyncTheta", "NoFlicker", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(RatingEMFrame, aes(x = Condition, y = emmean, color = Condition)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.2) +
+  labs(title="Estimated Marginal Means per Condition", x = "Condition", y = "EMMs")
+
+plot(TIME.emm.swRating, comparisons = TRUE) +
+  ggtitle("Estimated Marginal Means")
+
+```
+
+```{r Dprime & Accuracy correlation, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# select the participants with Dprime
+Exp3DatawDprime <- Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$ParticipantID %in% c(Exp3Sync_subnums),]
+
+Theta_means <- aggregate(Accuracy ~ Condition*ParticipantID, data = Exp3DatawDprime, FUN = mean)
+STheta_means <- Theta_means[Theta_means == "SyncTheta",]
+ATheta_means <- Theta_means[Theta_means == "AsyncTheta",]
+Exp3TIMEEffect <- STheta_means$Accuracy - ATheta_means$Accuracy
+
+cor(Exp3DprimeData $Dprime, Exp3TIMEEffect, method = "pearson")
+cor.test(Exp3DprimeData $Dprime, Exp3TIMEEffect, method = "pearson")
+
+DprimewTIME <- data.frame(DPrime = Exp3DprimeData $Dprime, Exp3TIMEEffect)
+
+ggplot(DprimewTIME, aes(x=DPrime, y=Exp3TIMEEffect)) +
+  geom_point()+
+  geom_smooth(method=lm)
+
+```
+
+```{r FullvsHalfDuration, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+NoFlickerFull <- c(NoFlicker_pSub[NoFlicker_pSub$Condition == "NoFlickerFull",]$Accuracy,
+Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "NoFlickerFull",]$Accuracy)
+
+NoFlickerHalf <- c(NoFlicker_pSub[NoFlicker_pSub$Condition == "NoFlickerHalf",]$Accuracy,
+Exp3pSub_pCondition_acc[Exp3pSub_pCondition_acc$Condition == "NoFlickerHalf",]$Accuracy)
+
+(FullvsHalfDuration <- boot.t.test(NoFlickerFull, NoFlickerHalf,
+                                        alternative = c("two.sided", "less", "greater"), 
+                                        mu = 0, paired = TRUE, var.equal = FALSE,
+                                        conf.level = 0.95, R = 100000, symmetric = FALSE))
+
+(mean(NoFlickerFull-NoFlickerHalf))/sd(NoFlickerFull-NoFlickerHalf) # Cohen's d
+
+FullandHalfDuration <- data.frame(c(NoFlickerFull,NoFlickerHalf),c(rep("NoFlickerFull",length(NoFlickerFull)), rep("NoFlickerHalf",length(NoFlickerHalf))))
+colnames(FullandHalfDuration) <- c("Accuracy", "Duration")
+
+ggplot(FullandHalfDuration, aes(x = Duration, y = Accuracy, fill = Duration)) +
+  geom_violin(trim=FALSE)+
+  geom_point(size = 2, color = "gray", position = position_jitterdodge(jitter.width = .13)) +
+  labs(title="Trial-Averaged Means per Conditions", x = "Duration", y = "Accuracy")+
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black")
+
+```
+
+
+```{r Collapsed Dprime and Dprime-Accuracy correlation, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# significance test
+(DPrime_out <- boot.t.test(c(Exp3DprimeData$Dprime, Exp2DprimeData$Dprime), alternative = c("two.sided", "less", "greater"),
+                           mu = 0, paired = FALSE, var.equal = FALSE, conf.level = 0.95,
+                           R = 100000, symmetric = FALSE))
+
+(mean(c(Exp3DprimeData$Dprime, Exp2DprimeData$Dprime)))/sd(c(Exp3DprimeData$Dprime, Exp2DprimeData$Dprime)) # Cohen's d
+
+Exp23DprimeData <- rbind(Exp3DprimeData, Exp2DprimeData)
+
+ggplot(data = Exp23DprimeData, aes(x = 0, y = Dprime, fill = 0)) +
+  geom_violin(width=1, fill = "lightgray") +
+  scale_x_discrete( ) +
+    geom_point(size = 3, color = "gray45", position = position_dodge2(width = .5)) +
+  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black") +
+  stat_summary(fun = "mean", geom = "point", size = 2, color = "black") +
+  labs(x = "Participants",
+       y = "Sync-Async Difference")+
+  theme(text = element_text(size=20))
+
+
+cor(c(Exp3DprimeData$Dprime, Exp2DprimeData$Dprime), c(Exp3TIMEEffect, Exp2TIMEEffect), method = "pearson")
+cor.test(c(Exp3DprimeData$Dprime, Exp2DprimeData$Dprime), c(Exp3TIMEEffect, Exp2TIMEEffect), method = "pearson")
+
+DprimewTIME <- data.frame(DPrime = c(Exp3DprimeData$Dprime, Exp2DprimeData$Dprime), TIMEEffect = c(Exp3TIMEEffect, Exp2TIMEEffect))
+
+ggplot(DprimewTIME, aes(x=DPrime, y=TIMEEffect)) +
+  geom_point()+
+  geom_smooth(method=lm)+
+theme(text = element_text(size=20))
+
+```

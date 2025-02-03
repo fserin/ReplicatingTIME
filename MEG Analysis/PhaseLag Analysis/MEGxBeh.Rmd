@@ -1,0 +1,358 @@
+---
+title: "TIME_BehaviouralxMEG"
+output: 
+  pdf_document: 
+date: "`r Sys.Date()`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Confirmatory Analysis 
+```{r Load Data,message=FALSE, warning=FALSE, out.width="55%"}
+# Load libraries and set path ------------------------------------------------
+library(lme4); library(car); 
+library(ggplot2); library(emmeans)
+library(tinytex); library(MKinfer)
+library(sjPlot); library(sjmisc)
+library(ggpubr); library(lmerTest)
+library(circular); library(bpnreg)
+library(dplyr); library(brms)
+
+# Arrange the data --------------------------------------------------------
+
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# get data folder path
+# Current directory needs to be set to the script's folder
+DataFolder <- getwd()
+
+# Initialize data frame
+DatawTheta <- data.frame()
+  
+# Read the CSV file
+DatawTheta <- read.csv("DatawTheta.csv", header = TRUE)
+
+```
+
+```{r Theta x Condition Analysis,message=FALSE, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# Looking at extracted theta power as function of conditions
+# There were cases of overfitting. ClipID removed to solve it.
+# Also, there was a warning about "glmer" being unnecessary. Changed to "lmer"
+
+# recode variable types
+# Accuracy and theta analysis required scaling of theta power
+DatawTheta$Condition <- as.factor(DatawTheta$Condition)
+DatawTheta$ParticipantID <- as.factor(DatawTheta$ParticipantID)
+DatawTheta$ClipID <- as.factor(DatawTheta$ClipID)
+DatawTheta$Theta4Hz <- scale(DatawTheta$Theta4Hz)
+# DatawTheta$RelTheta4Hz <- scale(DatawTheta$RelTheta4Hz)
+# DatawTheta$BroadTheta <- scale(DatawTheta$BroadTheta)
+# DatawTheta$Synchronicity <- scale(DatawTheta$Synchronicity)
+
+# Theta 4Hz
+DatawTheta.model = lmer(Theta4Hz ~ Condition + (1|ParticipantID),
+                         data=DatawTheta)
+
+summary(DatawTheta.model)
+DatawTheta.model.emm <- emmeans(DatawTheta.model,"Condition")
+pairs(DatawTheta.model.emm)
+
+# plot theta power per condition
+DatawTheta.pCond <- aggregate(Theta4Hz ~ ParticipantID + Condition, data = DatawTheta, mean)
+colnames(DatawTheta.pCond) <- c("ParticipantID", "Condition", "Theta4Hz")
+DatawTheta.pCond$Condition = factor(DatawTheta.pCond$Condition, levels = c("NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(DatawTheta.pCond, aes(x = Condition, y = Theta4Hz, fill = Condition)) +
+  geom_violin(trim=FALSE)+
+  geom_point(size = 2, color = "gray") +
+  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
+  labs(x = "Condition", y = "Theta 4Hz Power") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.1, color = "black") +
+  stat_summary(fun = mean, geom = "point", size = 2, color = "black")
+
+# Relative Theta 4Hz Power: relative to 3.5 and 4.5 Hz freqs
+DatawRelTheta.model <- lmer(RelTheta4Hz ~ Condition + (1|ParticipantID),
+                         data=DatawTheta)
+
+Anova(DatawRelTheta.model)
+summary(DatawRelTheta.model)
+DatawRelTheta.model.emm <- emmeans(DatawRelTheta.model,"Condition")
+pairs(DatawRelTheta.model.emm)
+
+# plot theta power per condition
+DatawRelTheta.pCond <- aggregate(RelTheta4Hz ~ ParticipantID + Condition, data = DatawTheta, mean)
+colnames(DatawRelTheta.pCond) <- c("ParticipantID", "Condition", "RelTheta4Hz")
+DatawRelTheta.pCond$Condition = factor(DatawRelTheta.pCond$Condition, levels = c("NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(DatawRelTheta.pCond, aes(x = Condition, y = RelTheta4Hz, fill = Condition)) +
+  geom_violin(trim=FALSE)+
+  geom_point(size = 2, color = "gray") +
+  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
+  labs(x = "Condition", y = "Relative Theta 4Hz Power") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.1, color = "black") +
+  stat_summary(fun = mean, geom = "point", size = 2, color = "black")
+
+RelThetaEMFrame <- data.frame(DatawRelTheta.model.emm)
+RelThetaEMFrame$Condition = factor(RelThetaEMFrame$Condition, levels = c( "NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(RelThetaEMFrame, aes(x = Condition, y = emmean, color = Condition)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.3, linewidth = 2) +
+  labs(x = "Condition", y = "Estimated Marginal Mean")
+
+# Broad theta: 3-8 Hz
+DatawBroadTheta.model = lmer(BroadTheta ~ Condition + (1|ClipID) + 
+                           (1|ParticipantID), data=DatawTheta)
+
+summary(DatawBroadTheta.model)
+DatawBroadTheta.model.emm <- emmeans(DatawBroadTheta.model,"Condition")
+pairs(DatawBroadTheta.model.emm)
+
+# plot theta power per condition
+DatawBroadTheta.pCond <- aggregate(BroadTheta ~ ParticipantID + Condition, data = DatawTheta, mean)
+colnames(DatawBroadTheta.pCond) <- c("ParticipantID", "Condition", "BroadTheta")
+DatawBroadTheta.pCond$Condition = factor(DatawBroadTheta.pCond$Condition, levels = c("NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+
+ggplot(DatawBroadTheta.pCond, aes(x = Condition, y = BroadTheta, fill = Condition)) +
+  geom_violin(trim=FALSE)+
+  geom_point(size = 2, color = "gray") +
+  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
+  labs(x = "Condition", y = "Broad Theta 3-8 Hz") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.1, color = "black") +
+  stat_summary(fun = mean, geom = "point", size = 2, color = "black")
+
+
+```
+
+```{r Phase Synchrony ~ Condition,message=FALSE, warning=FALSE, out.width="55%"}
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# Average trials per participant
+DatawPhase.pCond <- aggregate(Synchronicity ~ ParticipantID + Condition,
+                              data = DatawTheta,
+                              subset = DatawTheta$Condition == "SyncTheta" | DatawTheta$Condition == "AsyncTheta",
+                              mean)
+
+# get radian values for sync theta phase angle synchronicity
+SyncPhaseRads <- DatawPhase.pCond[DatawPhase.pCond$Condition == "SyncTheta",]$Synchronicity
+
+# multiply by 2 to simulate testing within 0 to 180 degrees
+SyncPhaseRads_transformed <- 2 * SyncPhaseRads
+
+# convert to a circular object for full circle analysis
+SyncPhaseRads_circular <- circular(SyncPhaseRads_transformed, units = "radians", modulo = "2pi")
+
+# perform Rayleigh test on the transformed data
+(SyncThetaPhase_rayleigh <- rayleigh.test(SyncPhaseRads_circular))
+
+
+# Set the seed for reproducibility
+set.seed(13021996)
+
+# do the same for async theta
+# get radian values for sync theta phase angle synchronicity
+
+AsyncPhaseRads <- DatawPhase.pCond[DatawPhase.pCond$Condition == "AsyncTheta",]$Synchronicity
+
+# multiply by 2 to simulate testing within 0 to 180 degrees
+AsyncPhaseRads_transformed <- 2 * AsyncPhaseRads
+
+# convert to a circular object for full circle analysis
+AsyncPhaseRads_circular <- circular(AsyncPhaseRads_transformed, units = "radians", modulo = "2pi")
+
+# perform Rayleigh test on the transformed data
+(AsyncThetaPhase_rayleigh <- rayleigh.test(AsyncPhaseRads_circular))
+
+
+# DatawBinaryCondition <- DatawTheta[DatawTheta$Condition == "SyncTheta" | DatawTheta$Condition == "AsyncTheta",]
+# DatawBinaryCondition$Condition <- as.numeric(DatawBinaryCondition$Condition)
+# DatawBinaryCondition[DatawBinaryCondition$Condition == 1,]$Condition <- 0
+# DatawBinaryCondition[DatawBinaryCondition$Condition == 4,]$Condition <- 1
+# DatawBinaryCondition$Condition <- as.factor(DatawBinaryCondition$Condition)
+# 
+# 
+# PhaseConditionFit <- glmer(Condition ~ abs(Synchronicity) + (1|ParticipantID) +(1|ClipID),
+#   DatawBinaryCondition, family = binomial)
+
+
+```
+
+```{r Accuracy ~ Phase Synchrony,message=FALSE, warning=FALSE, out.width="55%"}
+
+# Sort trials by phase synchrony: -45 to 45 sync, 135 to 225 async
+DatawTheta$SyncSort <- -1
+
+DatawTheta[which(DatawTheta$Synchronicity*(180 / pi) < 45 & DatawTheta$Synchronicity*(180 / pi) > -45),]$SyncSort <- 1
+
+## Circular mixed-effects
+DatawSyncTheta <- select(DatawTheta[DatawTheta$Condition == "SyncTheta" & !is.na(DatawTheta$Synchronicity),], Synchronicity, Accuracy, ParticipantID, ClipID, SyncSort)
+
+DatawSyncTheta[DatawSyncTheta$Accuracy == 1,]$Accuracy <- "Remembered"
+DatawSyncTheta[DatawSyncTheta$Accuracy == 0,]$Accuracy <- "Forgotten"
+
+# New column with 1 and -1 for r and f
+
+#DatawSyncTheta$Synchronicity <- DatawSyncTheta$Synchronicity + pi
+
+sum_df <- aggregate(Synchronicity ~ Accuracy + ParticipantID, data = DatawSyncTheta, mean.circular)
+
+meansum_df <- aggregate(Synchronicity ~ Accuracy, data = sum_df, mean.circular)
+
+SynchronyDiff <- (((sum_df[sum_df$Accuracy == "Remembered",]$Synchronicity -  sum_df[sum_df$Accuracy == "Forgotten",]$Synchronicity) %% pi) -pi)
+  
+
+diff_df <- data.frame(unique(sum_df$ParticipantID),SynchronyDiff)
+colnames(diff_df) <- c("ParticipantID","SynchronyDiff")
+
+# data histograms
+# circular predictor?
+# raw trial-wise
+ggplot(DatawSyncTheta, aes(x = Synchronicity*180/pi, group = Accuracy, fill = Accuracy, color = Accuracy)) +
+  geom_histogram() + xlim(180, -180) +
+  coord_radial(inner.radius = 0.1, start = -pi/2, r.axis.inside = TRUE) +
+  labs(title="All Trials")
+  # geom_vline(data=df_means, aes(xintercept = mean*180/pi, color = Accuracy),
+  #            linetype="dashed") +
+
+ggplot(DatawSyncTheta, aes(x = Synchronicity*180/pi)) +
+  geom_histogram() + xlim(180, -180) +
+  coord_radial(inner.radius = 0.1, start = -pi/2, r.axis.inside = TRUE) +
+  labs(title="All Trials")
+
+# trial-averaged
+ggplot(sum_df, aes(x = Synchronicity*180/pi, fill = Accuracy, color = Accuracy)) +
+  geom_histogram() + xlim(180, -180) +
+  coord_radial(inner.radius = 0.1, start = -pi/2,r_axis_inside = TRUE) +
+  geom_vline(data=meansum_df, aes(xintercept = Synchronicity*180/pi, color = Accuracy),
+             linetype="dashed") +
+  labs(title="Trial-average per Participant")
+
+# difference
+ggplot(diff_df, aes(x = SynchronyDiff*180/pi)) +
+  geom_histogram() + xlim(180, -180) +
+  coord_radial(inner.radius = 0.1, start = -pi/2, r_axis_inside = TRUE) +
+  geom_vline(data=diff_df, aes(xintercept = mean.circular(SynchronyDiff)*180/pi),
+             linetype="dashed") +
+  labs(title="Remembered - Forgotten Phase Angle")
+
+
+# 
+PhaseXAccuracyFit <- glmer(Accuracy ~ abs(Synchronicity) + (1|ParticipantID) +(1|ClipID),
+  DatawSyncTheta, family = binomial)
+
+Anova(PhaseXAccuracyFit)
+summary(PhaseXAccuracyFit)
+
+
+PhaseXAccuracyFit <- glmer(Accuracy ~ poly(abs(Synchronicity)) + (1|ParticipantID) +(1|ClipID),
+  DatawSyncTheta, family = binomial)
+
+Anova(PhaseXAccuracyFit)
+summary(PhaseXAccuracyFit)
+
+PhaseXAccuracyFit <- glmer(Accuracy ~ SyncSort + (1|ParticipantID) +(1|ClipID),
+  DatawSyncTheta, family = binomial)
+
+Anova(PhaseXAccuracyFit)
+summary(PhaseXAccuracyFit)
+
+# PhaseFit <- brm(Accuracy ~ abs(Synchronicity) + (1|ParticipantID) +(1|ClipID),
+#   DatawSyncTheta, family = bernoulli)
+# PhaseFit <- brm(Accuracy ~ poly(abs(Synchronicity),2) + (1|ParticipantID) +(1|ClipID),
+#   DatawSyncTheta, family = bernoulli)
+
+# poly of synch for non-linearity
+# calculate bayes is complicated
+
+#traceplot(PhaseFit, "beta1")
+
+
+```
+
+```{r Accuracy ~ Theta Analysis,message=FALSE, warning=FALSE, out.width="55%"}
+
+# Accuracy ~ Theta 4 Hz power 
+
+DatawTheta.model = glmer(Accuracy ~ Theta4Hz*Condition + poly(EncodingPosition,2) 
+                         + poly(BlockNumber,2) +(1|ClipID) + (Theta4Hz*Condition|ParticipantID),
+                         data=DatawTheta, family = binomial)
+DatawTheta.model = glmer(Accuracy ~ Theta4Hz*Condition + (1|ClipID) + (1|ParticipantID),
+                         data=DatawTheta, family = binomial)
+
+car::Anova(DatawTheta.model, type=3)
+summary(DatawTheta.model)
+DatawTheta.model.emm <- emmeans(DatawTheta.model,"Theta4Hz")
+pairs(DatawTheta.model.emm)
+plot_model(DatawTheta.model)
+
+emtrends(DatawTheta.model,list(pairwise~Condition),var="Theta4Hz")
+
+# Use only no-flicker condition
+DatawTheta.Nof.model = glmer(Accuracy ~ Theta4Hz + (1|ClipID) + (1|ParticipantID),
+                         data=DatawTheta, 
+                         subset = DatawTheta$Condition == "NoFlicker", 
+                         family = binomial)
+
+car::Anova(DatawTheta.Nof.model, type=3)
+summary(DatawTheta.Nof.model)
+emmeans(DatawTheta.Nof.model,"Theta4Hz")
+
+# Test whether Relative Theta 4 Hz power (Relative to 3.5 and 4.5 HZ frequencies) predicts memory accuracy
+DatawRelTheta.model = glmer(Accuracy ~ RelTheta4Hz*Condition + poly(EncodingPosition,2) 
+                         + poly(BlockNumber,2) + (1|ClipID) + (1|ParticipantID),
+                         data=DatawTheta, family = binomial)
+
+DatawRelTheta.model = glmer(Accuracy ~ RelTheta4Hz*Condition + (1|ClipID) + (1|ParticipantID),
+                         data=DatawTheta, family = binomial)
+
+car::Anova(DatawRelTheta.model, type=3)
+summary(DatawRelTheta.model)
+emmeans(DatawRelTheta.model,"RelTheta4Hz")
+plot_model(DatawRelTheta.model)
+
+emtrends(DatawRelTheta.model,list(pairwise~Condition),var="RelTheta4Hz")
+
+# Use only no-flicker condition
+DatawRelTheta.Nof.model = glmer(Accuracy ~ RelTheta4Hz + (1|ClipID) + (1|ParticipantID),
+                         data=DatawTheta, 
+                         subset = DatawTheta$Condition == "NoFlicker", 
+                         family = binomial)
+
+car::Anova(DatawRelTheta.Nof.model, type=3)
+summary(DatawRelTheta.Nof.model)
+emmeans(DatawRelTheta.Nof.model,"RelTheta4Hz")
+
+# Test whether Broad Theta band (3-8 Hz)power predicts memory accuracy
+DatawBroadTheta.model = glmer(Accuracy ~ BroadTheta*Condition + poly(EncodingPosition,2) 
+                         + poly(BlockNumber,2) + (1|ClipID) + (1|ParticipantID),
+                         data=DatawTheta, family = binomial)
+
+DatawRelTheta.model = glmer(Accuracy ~ BroadTheta*Condition + (1|ClipID) + (1|ParticipantID),
+                         data=DatawTheta, family = binomial)
+
+car::Anova(DatawBroadTheta.model, type=3)
+summary(DatawBroadTheta.model)
+emmeans(DatawBroadTheta.model,"BroadTheta")
+plot_model(DatawBroadTheta.model)
+
+emtrends(DatawBroadTheta.model,list(pairwise~Condition),var="BroadTheta")
+
+# Use only no-flicker condition
+DatawBroadTheta.Nof.model = glmer(Accuracy ~ BroadTheta + (1|ClipID) + (1|ParticipantID),
+                         data=DatawTheta, 
+                         subset = DatawTheta$Condition == "NoFlicker", 
+                         family = binomial)
+
+car::Anova(DatawBroadTheta.Nof.model, type=3)
+summary(DatawBroadTheta.Nof.model)
+emmeans(DatawBroadTheta.Nof.model,"BroadTheta")
+
+```

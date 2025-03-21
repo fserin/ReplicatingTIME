@@ -16,7 +16,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(lme4);library(car); 
 library(ggplot2);library(emmeans)
 library(tinytex);library(MKinfer)
-library(BayesFactor)
+library(BayesFactor);library(effectsize)
+library(meta)
 
 # get data folder paths
 # Current directory needs to be set to the script's folder
@@ -391,7 +392,9 @@ abs(mean(SyncTheta_AsyncTheta)/sd(SyncTheta_AsyncTheta)) # Cohen's d
                                         alternative = c("two.sided", "less", "greater"),
                                         mu = 0, paired = FALSE, var.equal = FALSE,
                                         conf.level = 0.95, R = 10000, symmetric = FALSE))
-abs(mean(SyncTheta_SyncDelta)/sd(SyncTheta_SyncDelta)) # Cohen's d 
+abs(mean(SyncTheta_SyncDelta)/sd(SyncTheta_SyncDelta)) # Cohen's d
+
+Exp2_D <- cohens_d(SyncTheta_AsyncTheta, paired = TRUE)
 
 
 #Synchrony Discrimination Task
@@ -897,7 +900,10 @@ abs(mean(AsyncTheta_NoFlickerHalf)/sd(AsyncTheta_NoFlickerHalf)) # Cohen's d
                                         alternative = c("two.sided", "less", "greater"),
                                         mu = 0, paired = FALSE, var.equal = FALSE,
                                         conf.level = 0.95, R = 100000, symmetric = FALSE))
-abs(mean(NoFlickerFull_NoFlickerHalf)/sd(NoFlickerFull_NoFlickerHalf)) # Cohen's d 
+abs(mean(NoFlickerFull_NoFlickerHalf)/sd(NoFlickerFull_NoFlickerHalf)) # Cohen's d
+
+Exp3_D <- cohens_d(SyncTheta_AsyncTheta, paired = TRUE)
+
 
 ```
 
@@ -1051,7 +1057,6 @@ ggplot(data = Exp23_sync_asyncDiff, aes(x = 0, y = SyncAsyncDiff, fill = 0)) +
 # Set the seed for reproducibility
 set.seed(13021996)
 
-# select the participants with Dprime
 ClouterBaseline <- read.csv("Clouter_baseline.csv")
 
 
@@ -1301,5 +1306,37 @@ ggplot(DprimewTIME, aes(x=DPrime, y=TIMEEffect)) +
   geom_point()+
   geom_smooth(method=lm)+
 theme(text = element_text(size=20))
+
+```
+
+```{r Accuracy ~ Theta Analysis,message=FALSE, warning=FALSE, out.width="55%"}
+ClouterBaseline <- read.csv("Clouter_baseline.csv")
+ClouterExp1 <- read.csv("Clouter_experiment1.csv")
+ClouterExp2 <- read.csv("Clouter_experiment2.csv")
+Wang <- read.csv("experiment__wangetal.csv")
+
+ClouterExp1_D <- cohens_d(ClouterExp1[ClouterExp1$PhaseOffset == 0,]$AvgCorrect, ClouterExp1[ClouterExp1$PhaseOffset == 180,]$AvgCorrect, paired = TRUE)
+
+ClouterExp2_D <- cohens_d(ClouterExp2[ClouterExp2$Sync == 'Synchronous' & ClouterExp2$Frequency == '4 Hz',]$AvgCorrect, ClouterExp2[ClouterExp2$Sync == 'Asynchronous' & ClouterExp2$Frequency == '4 Hz',]$AvgCorrect, paired = TRUE)
+
+ClouterBaseline_D <- cohens_d(ClouterBaseline[ClouterBaseline$x6 == 'Theta\\zero',]$AvgCorrect, ClouterBaseline[ClouterBaseline$x6 == 'Theta\\oneeighty',]$AvgCorrect, paired = TRUE)
+
+Wang_D <- cohens_d(Wang[Wang$Phase_offset_condition == 0,]$Accuracy, Wang[Wang$Phase_offset_condition == 180,]$Accuracy, paired = TRUE)
+
+ExpNames <- c('Clouter et al. Exp1','Clouter et al. Exp2','Clouter et al. Baseline','Wang et al.','Experiment 2','Experiment 3')
+
+CohensDs <- c(ClouterExp1_D$Cohens_d, ClouterExp2_D$Cohens_d, ClouterBaseline_D$Cohens_d, Wang_D$Cohens_d, Exp2_D$Cohens_d, Exp3_D$Cohens_d) # Effect sizes
+Ns <- c(24, 24, 24, 24, 32, 32) # Sample sizes
+
+df <- data.frame(ExpNames,CohensDs, Ns)
+
+SDs <- ((c(ClouterExp1_D$CI_high,ClouterExp2_D$CI_high,ClouterBaseline_D$CI_high, Wang_D$CI_high, Exp2_D$CI_high, Exp3_D$CI_high) - c(ClouterExp1_D$CI_low,ClouterExp2_D$CI_low,ClouterBaseline_D$CI_low, Wang_D$CI_low, Exp2_D$CI_low, Exp3_D$CI_low))/3.92)* sqrt(Ns)
+
+MM <- metamean(Ns, CohensDs,  SDs,  ExpNames)
+
+forest(c(CohensDs, MM$TE.fixed),ci.lb = c(ClouterExp1_D$CI_low,ClouterExp2_D$CI_low,ClouterBaseline_D$CI_low, Wang_D$CI_low, Exp2_D$CI_low, Exp3_D$CI_low, MM$lower.fixed), ci.ub = c(ClouterExp1_D$CI_high,ClouterExp2_D$CI_high,ClouterBaseline_D$CI_high, Wang_D$CI_high, Exp2_D$CI_high, Exp3_D$CI_high, MM$upper.fixed),
+             xlab = "Cohen's d", slab = c(ExpNames,'Overall'))
+
+forest(MM, random = FALSE, hetstat = FALSE, leftcols = c("studlab", "n"), rightcols = "ci", ref = 0)
 
 ```

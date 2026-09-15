@@ -1,0 +1,2170 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<META http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      -->
+<title>AlphaAnalysis.m</title>
+<meta name="generator" content="MATLAB 25.1">
+<link rel="schema.DC" href="http://purl.org/dc/elements/1.1/">
+<meta name="DC.date" content="2026-09-11">
+<meta name="DC.source" content="AlphaAnalysis.m">
+<style type="text/css">
+html,body,div,span,applet,object,iframe,h1,h2,h3,h4,h5,h6,p,blockquote,pre,a,abbr,acronym,address,big,cite,code,del,dfn,em,font,img,ins,kbd,q,s,samp,small,strike,strong,tt,var,b,u,i,center,dl,dt,dd,ol,ul,li,fieldset,form,label,legend,table,caption,tbody,tfoot,thead,tr,th,td{margin:0;padding:0;border:0;outline:0;font-size:100%;vertical-align:baseline;background:transparent}body{line-height:1}ol,ul{list-style:none}blockquote,q{quotes:none}blockquote:before,blockquote:after,q:before,q:after{content:'';content:none}:focus{outine:0}ins{text-decoration:none}del{text-decoration:line-through}table{border-collapse:collapse;border-spacing:0}
+
+html { min-height:100%; margin-bottom:1px; }
+html body { height:100%; margin:0px; font-family:Arial, Helvetica, sans-serif; font-size:10px; color:#000; line-height:140%; background:#fff none; overflow-y:scroll; }
+html body td { vertical-align:top; text-align:left; }
+
+h1 { padding:0px; margin:0px 0px 25px; font-family:Arial, Helvetica, sans-serif; font-size:1.5em; color:#d55000; line-height:100%; font-weight:normal; }
+h2 { padding:0px; margin:0px 0px 8px; font-family:Arial, Helvetica, sans-serif; font-size:1.2em; color:#000; font-weight:bold; line-height:140%; border-bottom:1px solid #d6d4d4; display:block; }
+h3 { padding:0px; margin:0px 0px 5px; font-family:Arial, Helvetica, sans-serif; font-size:1.1em; color:#000; font-weight:bold; line-height:140%; }
+
+a { color:#005fce; text-decoration:none; }
+a:hover { color:#005fce; text-decoration:underline; }
+a:visited { color:#004aa0; text-decoration:none; }
+
+p { padding:0px; margin:0px 0px 20px; }
+img { padding:0px; margin:0px 0px 20px; border:none; }
+p img, pre img, tt img, li img, h1 img, h2 img { margin-bottom:0px; }
+
+ul { padding:0px; margin:0px 0px 20px 23px; list-style:square; }
+ul li { padding:0px; margin:0px 0px 7px 0px; }
+ul li ul { padding:5px 0px 0px; margin:0px 0px 7px 23px; }
+ul li ol li { list-style:decimal; }
+ol { padding:0px; margin:0px 0px 20px 0px; list-style:decimal; }
+ol li { padding:0px; margin:0px 0px 7px 23px; list-style-type:decimal; }
+ol li ol { padding:5px 0px 0px; margin:0px 0px 7px 0px; }
+ol li ol li { list-style-type:lower-alpha; }
+ol li ul { padding-top:7px; }
+ol li ul li { list-style:square; }
+
+.content { font-size:1.2em; line-height:140%; padding: 20px; }
+
+pre, code { font-size:12px; }
+tt { font-size: 1.2em; }
+pre { margin:0px 0px 20px; }
+pre.codeinput { padding:10px; border:1px solid #d3d3d3; background:#f7f7f7; }
+pre.codeoutput { padding:10px 11px; margin:0px 0px 20px; color:#4c4c4c; }
+pre.error { color:red; }
+
+@media print { pre.codeinput, pre.codeoutput { word-wrap:break-word; width:100%; } }
+
+span.keyword { color:#0000FF }
+span.comment { color:#228B22 }
+span.string { color:#A020F0 }
+span.untermstring { color:#B20000 }
+span.syscmd { color:#B28C00 }
+span.typesection { color:#A0522D }
+
+.footer { width:auto; padding:10px 0px; margin:25px 0px 0px; border-top:1px dotted #878787; font-size:0.8em; line-height:140%; font-style:italic; color:#878787; text-align:left; float:none; }
+.footer p { margin:0px; }
+.footer a { color:#878787; }
+.footer a:hover { color:#878787; text-decoration:underline; }
+.footer a:visited { color:#878787; }
+
+table th { padding:7px 5px; text-align:left; vertical-align:middle; border: 1px solid #d6d4d4; font-weight:bold; }
+table td { padding:7px 5px; text-align:left; vertical-align:top; border:1px solid #d6d4d4; }
+
+
+
+
+
+  </style>
+</head>
+<body>
+<div class="content">
+<h1>AlphaAnalysis.m</h1>
+<!--introduction-->
+<p>Pre-stimulus alpha analysis, following Wang et al. (2026, Communications Psychology). Tests whether pre-stimulus alpha power differs before trials whose actual visual-auditory phase difference matched their nominal condition vs trials where it didn't, and whether alpha relates to subsequent memory.</p>
+<p>Scope: implements the <b>memory</b> half of that analysis only. The tonic-alpha (trial-order x match) control ANOVA and LCMV source localisation are not implemented here.</p>
+<p>Run once per channel type (ChanType = 'MEGPLANAR', then 'MEGMAG'); outputs are saved with the channel type in the filename so runs don't overwrite.</p>
+<p>Not circular: sensors are selected by a cluster test on the mismatch-minus-match alpha contrast, and memory performance plays no part in that selection. (Re-testing match/mismatch itself on those sensors would be circular, and is deliberately not done here.)</p>
+<p>Requires Preprocessing.m and Analysis.m first. Reads Synchronicity.mat from Analysis.m (per-trial phase lag, condition, entrainment strength). Bad channels come from each subject's merged file, not a saved list, so this works for any ChanType regardless of what Analysis.m used.</p>
+<p>Behavioural data (per-trial memory outcome) is an external dependency not produced by this pipeline -- see "Behavioural data" below.</p>
+<!--/introduction-->
+<h2>Contents</h2>
+<div>
+<ul>
+<li>
+<a href="#1">Setup</a>
+</li>
+<li>
+<a href="#2">Load outputs from Analysis.m</a>
+</li>
+<li>
+<a href="#3">Channel set, neighbours, and interpolation weights</a>
+</li>
+<li>
+<a href="#4">Matched / mismatched trial labels</a>
+</li>
+<li>
+<a href="#5">Pre-stimulus alpha power, per channel, per trial</a>
+</li>
+<li>
+<a href="#6">Per-subject sensor averages for the cluster test</a>
+</li>
+<li>
+<a href="#7">Cluster-based permutation test</a>
+</li>
+<li>
+<a href="#8">Sensor selection for the trial-level analyses</a>
+</li>
+<li>
+<a href="#9">Per-trial alpha over the selected sensors</a>
+</li>
+<li>
+<a href="#10">Behavioural data</a>
+</li>
+<li>
+<a href="#11">Export trial-level table</a>
+</li>
+<li>
+<a href="#12">Diagnostic plots</a>
+</li>
+<li>
+<a href="#13">Memory analysis</a>
+</li>
+<li>
+<a href="#14">Results inspection plots</a>
+</li>
+<li>
+<a href="#15">Continuous trial-level analyses</a>
+</li>
+</ul>
+</div>
+<h2 id="1">Setup</h2>
+<p>This duplicates TIMESetup.m rather than calling it, because the alpha analysis uses a different set of parameters and can be run on its own. If the paths or the subject list change, both files need updating. Kept in sync with the Setup sections of Preprocessing.m and Analysis.m -- if you change one, change the others to match.</p>
+<pre class="codeinput">close <span class="string">all</span> <span class="string">hidden</span>
+clear <span class="string">all</span>
+
+<span class="comment">% Random seed. The cluster permutation test's randomisations draw on</span>
+<span class="comment">% MATLAB's global random number generator; fixing the seed makes them</span>
+<span class="comment">% exactly reproducible across runs. `clear` does not reset the generator,</span>
+<span class="comment">% so this must be set explicitly rather than relied upon to start fresh.</span>
+rngSeed = 42;
+rng(rngSeed, <span class="string">'twister'</span>);
+
+<span class="comment">% Small helper used when reporting scalp positions</span>
+ternary_str = @(cond, a, b) subsref({b, a}, struct(<span class="string">'type'</span>, <span class="string">'{}'</span>, <span class="string">'subs'</span>, {{cond + 1}}));
+
+<span class="comment">% Paths</span>
+addpath <span class="string">'/imaging/henson/TIME/LatestMEGscripts'</span>
+addpath <span class="string">/imaging/local/software/spm_toolbox/osl/osl-core</span>
+addpath(<span class="string">'/imaging/henson/TIME/MEG_scripts'</span>)
+
+osl_startup(<span class="string">'/imaging/local/software/spm_toolbox/osl'</span>, <span class="string">'shared'</span>)
+
+<span class="comment">% Initialise SPM's M/EEG defaults without opening its GUI. `spm eeg`</span>
+<span class="comment">% launches the Menu, Interactive and Graphics windows, and publish()</span>
+<span class="comment">% captures every open figure, so those windows end up embedded in the HTML</span>
+<span class="comment">% output. spm('defaults', ...) configures exactly the same defaults with no</span>
+<span class="comment">% windows, and is safe to call repeatedly.</span>
+spm(<span class="string">'defaults'</span>, <span class="string">'EEG'</span>);
+
+<span class="comment">% Close any SPM windows that initialisation opened regardless, for the same</span>
+<span class="comment">% reason. SPM tags its windows, so they can be removed without touching the</span>
+<span class="comment">% figures this script creates itself.</span>
+delete(findall(0, <span class="string">'Type'</span>, <span class="string">'figure'</span>, <span class="string">'Tag'</span>, <span class="string">'Menu'</span>));
+delete(findall(0, <span class="string">'Type'</span>, <span class="string">'figure'</span>, <span class="string">'Tag'</span>, <span class="string">'Interactive'</span>));
+delete(findall(0, <span class="string">'Type'</span>, <span class="string">'figure'</span>, <span class="string">'Tag'</span>, <span class="string">'Graphics'</span>));
+
+outdir    = <span class="string">'/imaging/henson/TIME/meg-derivatives/'</span>;
+resultdir = <span class="string">'/imaging/henson/TIME/LatestMEGscripts/MEGxBehavioural'</span>;
+
+<span class="comment">% Figures: saved as .png (raster, 300 dpi). Vector formats (EMF, SVG, PDF)</span>
+<span class="comment">% were all tried in turn -- EMF is Windows-only and errors on this</span>
+<span class="comment">% platform; SVG and PDF both failed to render polarhistogram figures</span>
+<span class="comment">% correctly regardless of transparency settings, a MATLAB vector-export</span>
+<span class="comment">% limitation for that specific graphics object rather than something</span>
+<span class="comment">% fixable from this script. PNG is what has actually been confirmed to</span>
+<span class="comment">% render every figure correctly, so it is used for all of them rather</span>
+<span class="comment">% than keeping different paths for different figure types.</span>
+figdir = <span class="string">'/imaging/henson/TIME/LatestMEGscripts/figures'</span>;
+<span class="keyword">if</span> ~exist(figdir, <span class="string">'dir'</span>), mkdir(figdir); <span class="keyword">end</span>
+save_fig = @(fig, name) save_fig_png_safe(fig, fullfile(figdir, [name <span class="string">'.png'</span>]));
+
+ChanType = <span class="string">'MEGPLANAR'</span>;   <span class="comment">% run once with this, then again with 'MEGMAG'. Wang et al.</span>
+                          <span class="comment">% tested gradiometers and magnetometers separately; outputs</span>
+                          <span class="comment">% below are saved with the channel type in the filename so</span>
+                          <span class="comment">% the two runs do not overwrite each other.</span>
+Subs     = 1:32;
+transdef = <span class="string">''</span>;
+
+PhaseConds    = {<span class="string">'SyncTheta'</span>, <span class="string">'AsyncTheta'</span>};
+ExpectedPhase = [0, pi];
+
+<span class="comment">% Alpha analysis windows and band</span>
+AlphaBand    = [8 12];         <span class="comment">% Hz</span>
+PreWin       = [-0.7 -0.2];    <span class="comment">% pre-stimulus window, relative to stimulus onset (s)</span>
+AlphaBaseWin = [3.2 3.7];      <span class="comment">% post-stimulus baseline window (s). Deliberately</span>
+                               <span class="comment">% post-stimulus: normalising a pre-stimulus measure</span>
+                               <span class="comment">% by a pre-stimulus baseline would be circular. Sits</span>
+                               <span class="comment">% after the 3 s stimulus offset to avoid the offset</span>
+                               <span class="comment">% response.</span>
+<span class="comment">% Matched / mismatched classification. A trial is matched if its actual</span>
+<span class="comment">% phase difference falls within MatchedBound of the intended offset, and</span>
+<span class="comment">% mismatched if it is at least MismatchedBound away. With both bounds at</span>
+<span class="comment">% pi/2 the two groups partition every trial with no ambiguous band, a</span>
+<span class="comment">% +/- 90 deg split matching Wang et al. exactly (their code sorts trials</span>
+<span class="comment">% into two bins by phase difference: match = intended bin, mismatch =</span>
+<span class="comment">% everything else). Trials on the boundary go to matched (see the &lt;= / &gt;</span>
+<span class="comment">% in the classification below), keeping the groups mutually exclusive.</span>
+<span class="comment">%</span>
+<span class="comment">% A sharpened version was tried (MatchedBound = pi/4, MismatchedBound =</span>
+<span class="comment">% 3*pi/4), to discard the least certain labels -- phase here comes from a</span>
+<span class="comment">% single maximum-weight sensor per modality, not a beamformed ROI, so the</span>
+<span class="comment">% labels are noisier than Wang et al.'s. It backfired: 47.6% of trials fell</span>
+<span class="comment">% in the ambiguous band and five subjects were left with 3-4 trials in one</span>
+<span class="comment">% group, whose per-subject means were near noise yet carried full weight in</span>
+<span class="comment">% the group test. At these trial counts the trade is not worth making. Set</span>
+<span class="comment">% MatchedBound = pi/4 and MismatchedBound = 3*pi/4 to reinstate it.</span>
+MatchedBound    = pi/2;      <span class="comment">% within 90 deg of the intended offset</span>
+MismatchedBound = pi/2;      <span class="comment">% everything else counts as mismatched</span>
+
+<span class="comment">% Cluster permutation settings</span>
+nPermutations     = 1000;
+clusterAlpha      = 0.05;
+neighbourDist     = 40;        <span class="comment">% millimetres. Sensor positions are converted to mm</span>
+                               <span class="comment">% below, so this must be in mm too. Adjacent MEGIN</span>
+                               <span class="comment">% planar gradiometer locations are about 34 mm apart,</span>
+                               <span class="comment">% so a value near 40 gives roughly 4 to 8 neighbours</span>
+                               <span class="comment">% per channel. Too small a value silently prevents any</span>
+                               <span class="comment">% cluster from forming.</span>
+minNeighbourChans = 0;         <span class="comment">% minimum neighbours a channel needs to join a cluster.</span>
+                               <span class="comment">% MNE, used by Wang et al., has no equivalent parameter,</span>
+                               <span class="comment">% so 0 matches their procedure; higher values are stricter.</span>
+statTail          = 1;         <span class="comment">% 1 = right-tailed, testing Wang et al.'s direction (alpha</span>
+                               <span class="comment">% higher before mismatched trials); -1 = left-tailed;</span>
+                               <span class="comment">% 0 = two-tailed. A one-tailed test finds nothing if the</span>
+                               <span class="comment">% effect runs the other way, so check the diagnostics</span>
+                               <span class="comment">% printed after the test before interpreting a null.</span>
+
+<span class="comment">% Subjects excluded from this analysis</span>
+ExcludeSubs = [];              <span class="comment">% sub-23 was excluded here while its MEG and</span>
+                               <span class="comment">% behavioural trials were misaligned. That arose</span>
+                               <span class="comment">% because its first run holds 16 trials rather</span>
+                               <span class="comment">% than 64, displacing everything after it by 48</span>
+                               <span class="comment">% rows. Analysis.m now derives the mapping from</span>
+                               <span class="comment">% the condition labels instead of assuming the</span>
+                               <span class="comment">% identity, so the subject is recoverable.</span>
+
+<span class="comment">% Memory analysis settings</span>
+</pre>
+<pre class="codeoutput">Warning: Found OSLDIR environment variable; shutting down before starting up
+again... 
+[OSL] Cleaned up the path. Bye now!
+[OSL] Starting up from folder: /imaging/local/software/spm_toolbox/osl
+[OSL] Using configuration file: /home/fs02/Documents/MATLAB/osl.conf
+[OSL] Backing-up matlab path to: /home/fs02/Documents/MATLAB/.path-backup.tmp
+</pre>
+<h2 id="2">Load outputs from Analysis.m</h2>
+<pre class="codeinput">cd(resultdir)
+load(<span class="string">'Synchronicity.mat'</span>,       <span class="string">'Sync_pSub'</span>)
+load(<span class="string">'TrialMap.mat'</span>,            <span class="string">'TrialMap'</span>)   <span class="comment">% MEG trial index to behavioural row</span>
+<span class="keyword">if</span> numel(TrialMap) ~= 32 || any(cellfun(@isempty, TrialMap))
+    error([<span class="string">'TrialMap covers %d subjects and %d entries are empty. Re-run '</span> <span class="keyword">...</span>
+           <span class="string">'Analysis.m to rebuild it.'</span>], numel(TrialMap), sum(cellfun(@isempty, TrialMap)));
+<span class="keyword">end</span>
+
+<span class="keyword">if</span> ~ismember(<span class="string">'Condition'</span>, Sync_pSub.Properties.VariableNames)
+    error([<span class="string">'Sync_pSub has no Condition column. Re-run the phase-lag section of '</span> <span class="keyword">...</span>
+           <span class="string">'Analysis.m, which now adds Condition and EntrainStrength.'</span>]);
+<span class="keyword">end</span>
+
+<span class="comment">% Drop excluded subjects. SubFileIdx records each retained subject's</span>
+<span class="comment">% original position, which the behavioural section needs to pick the right</span>
+<span class="comment">% file.</span>
+SubFileIdx = find(~ismember(Subs, ExcludeSubs));
+Subs       = Subs(~ismember(Subs, ExcludeSubs));
+Sync_pSub  = Sync_pSub(~ismember(Sync_pSub.ParticipantID, ExcludeSubs), :);
+
+<span class="keyword">if</span> ~isempty(ExcludeSubs)
+    fprintf(<span class="string">'Excluded subjects: %s. Analysing %d subjects.\n'</span>, <span class="keyword">...</span>
+        mat2str(ExcludeSubs), length(Subs));
+<span class="keyword">end</span>
+</pre>
+<h2 id="3">Channel set, neighbours, and interpolation weights</h2>
+<p>Cluster-based permutation testing across subjects requires an identical channel set for everyone, but each subject has a different set of channels flagged bad by OSL. Rather than restricting the analysis to channels good in every subject -- which discards sensors wholesale because of a handful of participants -- each subject's bad channels are interpolated from their good neighbours, so every subject contributes the full gradiometer array.</p>
+<p>Interpolation uses a distance-weighted average over the neighbours defined below, equivalent to ft_channelrepair's 'weighted' method. It is applied to the time series, before any filtering, because interpolation is a linear spatial operation and interpolating power or amplitude instead would not be equivalent.</p>
+<p>Note the data are already tSSS-MaxFiltered, which reconstructs channels flagged at that stage from the SSS basis and reduces the spatial rank to roughly 70. The channels interpolated here are the additional ones OSL flagged afterwards. Interpolated channels are therefore not independent of their neighbours -- but neither are any of the channels after SSS, and the cluster test's spatial correction already assumes strong spatial correlation.</p>
+<pre class="codeinput">Dref          = spm_eeg_load(fullfile(outdir, <span class="string">'sub-30/meg/esub-30_task-loc_meg_proc-sss.mat'</span>));
+AnalysisChans = Dref.chanlabels(indchantype(Dref, ChanType));
+AnalysisChans = AnalysisChans(:)';
+nChan         = numel(AnalysisChans);
+
+<span class="comment">% Sensor neighbours. SPM returns sensor positions in whatever units the</span>
+<span class="comment">% file carries, which for MEGIN data is millimetres, so the distance</span>
+<span class="comment">% threshold has to be in the same units. Converting explicitly removes the</span>
+<span class="comment">% ambiguity: a mismatch here does not raise an error, it just yields almost</span>
+<span class="comment">% no neighbours (each planar gradiometer finding only the partner mounted</span>
+<span class="comment">% at the same location), and with too few neighbours no cluster can form</span>
+<span class="comment">% however strong the underlying effect.</span>
+grad = ft_convert_units(Dref.sensors(<span class="string">'MEG'</span>), <span class="string">'mm'</span>);
+
+cfg               = [];
+cfg.method        = <span class="string">'distance'</span>;
+cfg.neighbourdist = neighbourDist;
+cfg.grad          = grad;
+cfg.channel       = AnalysisChans;
+neighbours        = ft_prepare_neighbours(cfg);
+
+meanNeighbours = mean(cellfun(@numel, {neighbours.neighblabel}));
+fprintf(<span class="string">'Analysed channels: %d. Average neighbours per channel: %.1f\n'</span>, <span class="keyword">...</span>
+    nChan, meanNeighbours);
+<span class="keyword">if</span> meanNeighbours &lt; 3
+    warning([<span class="string">'Only %.1f neighbours per channel, which is too few for clustering '</span> <span class="keyword">...</span>
+             <span class="string">'(a healthy MEGIN planar layout gives roughly 4 to 8). Check '</span> <span class="keyword">...</span>
+             <span class="string">'neighbourDist against the units of grad, and inspect the result '</span> <span class="keyword">...</span>
+             <span class="string">'with ft_neighbourplot(struct(''neighbours'', neighbours), grad).'</span>], <span class="keyword">...</span>
+             meanNeighbours);
+<span class="keyword">end</span>
+
+<span class="comment">% Channel positions, ordered to match AnalysisChans</span>
+[inGrad, gradIdx] = ismember(AnalysisChans, grad.label);
+<span class="keyword">if</span> ~all(inGrad)
+    error(<span class="string">'%d analysed channels are absent from the sensor description.'</span>, sum(~inGrad));
+<span class="keyword">end</span>
+chanPos = grad.chanpos(gradIdx, :);
+
+<span class="comment">% One interpolation matrix per subject: identity for good channels, and a</span>
+<span class="comment">% distance-weighted average of good neighbours for bad ones. Bad channels</span>
+<span class="comment">% are read from each subject's own merged file, so this section is</span>
+<span class="comment">% independent of which ChanType Analysis.m was run with.</span>
+InterpW        = cell(1, length(Subs));
+GoodChans_pSub = cell(1, length(Subs));
+nBadTotal      = 0;
+
+<span class="keyword">for</span> iSub = 1:length(Subs)
+
+    Dsub = spm_eeg_load(fullfile(outdir, sprintf(<span class="string">'sub-%02d'</span>, Subs(iSub)), <span class="string">'meg'</span>, <span class="keyword">...</span>
+        sprintf(<span class="string">'cesub-%02d_task-TIME_run-1_meg_proc-sss%s.mat'</span>, Subs(iSub), transdef)));
+    GoodChans_pSub{iSub} = Dsub.chanlabels(indchantype(Dsub, ChanType, <span class="string">'GOOD'</span>));
+
+    isGood = ismember(AnalysisChans, GoodChans_pSub{iSub});
+    badIdx = find(~isGood);
+    W      = eye(nChan);
+
+    <span class="keyword">for</span> b = badIdx(:)'
+        nbEntry = neighbours(strcmp({neighbours.label}, AnalysisChans{b}));
+        <span class="keyword">if</span> isempty(nbEntry)
+            warning(<span class="string">'Channel %s has no entry in the neighbour structure; left uninterpolated.'</span>, <span class="keyword">...</span>
+                AnalysisChans{b});
+            <span class="keyword">continue</span>
+        <span class="keyword">end</span>
+
+        [inSet, nbIdx] = ismember(nbEntry.neighblabel, AnalysisChans);
+        nbIdx = nbIdx(inSet);
+        nbIdx = nbIdx(isGood(nbIdx));        <span class="comment">% interpolate from good neighbours only</span>
+
+        <span class="keyword">if</span> isempty(nbIdx)
+            warning([<span class="string">'Subject %d: channel %s has no good neighbours and was left '</span> <span class="keyword">...</span>
+                     <span class="string">'uninterpolated. Its values remain those of a channel flagged '</span> <span class="keyword">...</span>
+                     <span class="string">'bad.'</span>], Subs(iSub), AnalysisChans{b});
+            <span class="keyword">continue</span>
+        <span class="keyword">end</span>
+
+        dist = sqrt(sum((chanPos(nbIdx, :) - chanPos(b, :)).^2, 2));
+        w    = 1 ./ max(dist, eps);
+        w    = w / sum(w);
+
+        W(b, :)     = 0;
+        W(b, nbIdx) = w;
+    <span class="keyword">end</span>
+
+    InterpW{iSub} = W;
+    nBadTotal     = nBadTotal + numel(badIdx);
+<span class="keyword">end</span>
+
+fprintf(<span class="string">'Interpolated %d bad channels across %d subjects (mean %.1f per subject).\n'</span>, <span class="keyword">...</span>
+    nBadTotal, length(Subs), nBadTotal / length(Subs));
+</pre>
+<pre class="codeoutput">using gradiometers specified in the configuration
+Warning: Neuromag306 system detected - be aware of different sensor types, see
+http://www.fieldtriptoolbox.org/faq/why_are_there_multiple_neighbour_templates_for_the_neuromag306_system 
+there are on average 8.9 neighbours per channel
+Analysed channels: 204. Average neighbours per channel: 8.9
+Interpolated 99 bad channels across 32 subjects (mean 3.1 per subject).
+</pre>
+<h2 id="4">Matched / mismatched trial labels</h2>
+<p>A trial is "matched" if its actual visual-auditory phase difference fell within MatchedBound of the phase offset its condition intended (0 deg for SyncTheta, 180 deg for AsyncTheta), and "mismatched" if it fell at least MismatchedBound away. Trials between the two bounds are ambiguous and excluded from the contrast, since with a single-sensor phase estimate their classification is the least reliable. Only the two theta conditions are analysed: NoFlicker and SyncDelta have no defined 4 Hz phase relationship, so the distinction does not apply to them.</p>
+<p>Note this centres the bins on exactly 0 and 180 deg, as in Wang et al. Check meanLagDeg from Analysis.m first: if there is a systematic offset (from conduction delays or the audio-visual lag), centring the bins on the observed mean instead may be more appropriate, and should be a deliberate choice rather than a default.</p>
+<pre class="codeinput">expectedByTrial = nan(height(Sync_pSub), 1);
+<span class="keyword">for</span> iCond = 1:length(PhaseConds)
+    expectedByTrial(strcmp(Sync_pSub.Condition, PhaseConds{iCond})) = ExpectedPhase(iCond);
+<span class="keyword">end</span>
+
+<span class="comment">% Wrapped angular distance between the observed and expected phase offset</span>
+angDist = abs(angle(exp(1i * (Sync_pSub.Synchronicity - expectedByTrial))));
+
+<span class="comment">% The second condition on Mismatched keeps the two groups mutually exclusive</span>
+<span class="comment">% when the bounds coincide, as they do by default; without it a trial sitting</span>
+<span class="comment">% exactly on the boundary would be counted in both.</span>
+Sync_pSub.Matched    = angDist &lt;= MatchedBound;
+Sync_pSub.Mismatched = angDist &gt;= MismatchedBound &amp; ~Sync_pSub.Matched;
+Sync_pSub.Ambiguous  = ~Sync_pSub.Matched &amp; ~Sync_pSub.Mismatched;
+
+fprintf(<span class="string">'Matched: %d (%.1f%%)  Mismatched: %d (%.1f%%)  Ambiguous, excluded: %d (%.1f%%)  of %d\n'</span>, <span class="keyword">...</span>
+    sum(Sync_pSub.Matched),    100 * mean(Sync_pSub.Matched), <span class="keyword">...</span>
+    sum(Sync_pSub.Mismatched), 100 * mean(Sync_pSub.Mismatched), <span class="keyword">...</span>
+    sum(Sync_pSub.Ambiguous),  100 * mean(Sync_pSub.Ambiguous), height(Sync_pSub));
+
+<span class="comment">% Warn if sharpening has left too few trials in any subject to estimate a</span>
+<span class="comment">% stable per-subject mean for either group.</span>
+minTrialsPerGroup = 10;
+<span class="keyword">for</span> iSub = 1:length(Subs)
+    subRows = Sync_pSub.ParticipantID == Subs(iSub);
+    nM  = sum(Sync_pSub.Matched(subRows));
+    nMM = sum(Sync_pSub.Mismatched(subRows));
+    <span class="keyword">if</span> min(nM, nMM) &lt; minTrialsPerGroup
+        warning(<span class="string">'Subject %d: only %d matched and %d mismatched trials after sharpening.'</span>, <span class="keyword">...</span>
+            Subs(iSub), nM, nMM);
+    <span class="keyword">end</span>
+<span class="keyword">end</span>
+</pre>
+<pre class="codeoutput">Matched: 1542 (55.5%)  Mismatched: 1236 (44.5%)  Ambiguous, excluded: 0 (0.0%)  of 2778
+</pre>
+<h2 id="5">Pre-stimulus alpha power, per channel, per trial</h2>
+<p>Alpha is not covered by the frequency vector used in Analysis.m (which stops at 8 Hz), so it is computed here. A bandpass filter plus Hilbert transform is used, matching the approach taken in the phase-lag section of Analysis.m. Power is retained per channel (rather than channel-averaged as in TF_pSub) because the cluster test operates over sensors.</p>
+<p>Only two summary values per channel per trial are stored -- the mean amplitude in the pre-stimulus window and in the baseline window -- so the full time courses never need to be held in memory.</p>
+<pre class="codeinput">AlphaPre_pSub    = cell(1, length(Subs));   <span class="comment">% channel x trial, pre-stimulus window</span>
+AlphaBase_pSub   = cell(1, length(Subs));   <span class="comment">% channel x trial, baseline window</span>
+TrialInds_pSub   = cell(1, length(Subs));   <span class="comment">% trial indices these columns correspond to</span>
+AlphaDiffTC_pSub = cell(1, length(Subs));   <span class="comment">% channel x time, mismatch-minus-match, pre-stimulus window only</span>
+preTimes         = [];                      <span class="comment">% actual time (s) of each preIdx sample, set inside the loop</span>
+
+<span class="keyword">for</span> iSub = 1:length(Subs)
+
+    fprintf(<span class="string">'Alpha power: subject %d of %d\n'</span>, iSub, length(Subs));
+
+    sub_nam = sprintf(<span class="string">'sub-%02d'</span>, Subs(iSub));
+    sub_in  = fullfile(outdir, sub_nam, <span class="string">'meg'</span>);
+    cd(sub_in)
+
+    D = spm_eeg_load(sprintf(<span class="string">'cesub-%02d_task-TIME_run-1_meg_proc-sss%s.mat'</span>, Subs(iSub), transdef));
+
+    <span class="comment">% Index the common channels in this subject's own channel ordering</span>
+    [~, chanInds] = ismember(AnalysisChans, D.chanlabels);
+    <span class="keyword">if</span> any(chanInds == 0)
+        error(<span class="string">'Subject %s is missing one or more common channels.'</span>, sub_nam);
+    <span class="keyword">end</span>
+
+    <span class="comment">% Only the trials that appear in Sync_pSub for this subject, so that</span>
+    <span class="comment">% alpha and the phase-lag measures index the same trials</span>
+    TrialInds = Sync_pSub.TrialNum(Sync_pSub.ParticipantID == Subs(iSub));
+    TrialInds_pSub{iSub} = TrialInds;
+
+    <span class="comment">% Matched/Mismatched status for these same trials, in the same order,</span>
+    <span class="comment">% reused from Sync_pSub exactly as the per-subject sensor averages</span>
+    <span class="comment">% section below does, so the two stay consistent.</span>
+    subRows    = Sync_pSub.ParticipantID == Subs(iSub);
+    matched    = Sync_pSub.Matched(subRows);
+    mismatched = Sync_pSub.Mismatched(subRows);
+
+    preIdx  = (indsample(D, PreWin(1))       + 1):indsample(D, PreWin(2));
+    baseIdx = (indsample(D, AlphaBaseWin(1)) + 1):indsample(D, AlphaBaseWin(2));
+    preTimes = time(D);
+    preTimes = preTimes(preIdx);
+
+    AlphaPre  = nan(length(chanInds), length(TrialInds));
+    AlphaBase = nan(length(chanInds), length(TrialInds));
+
+    <span class="comment">% Raw alpha-amplitude time course in the pre-stimulus window, per trial.</span>
+    <span class="comment">% Kept only for the current subject and reduced to the mismatch-minus-match</span>
+    <span class="comment">% difference below before moving on, so the full per-trial array is never</span>
+    <span class="comment">% held for more than one subject. The baseline correction is applied after</span>
+    <span class="comment">% the loop, once the per-condition baselines are known, rather than</span>
+    <span class="comment">% per-trial (see below).</span>
+    preAmp = nan(length(chanInds), numel(preIdx), length(TrialInds));
+
+    <span class="keyword">for</span> iTrial = 1:length(TrialInds)
+        dat = squeeze(D(chanInds, :, TrialInds(iTrial)));   <span class="comment">% channel x time</span>
+        dat = InterpW{iSub} * dat;                          <span class="comment">% interpolate this subject's bad channels</span>
+        fdat = ft_preproc_bandpassfilter(dat, D.fsample, AlphaBand, 4, <span class="string">'but'</span>, <span class="string">'twopass'</span>, <span class="string">'reduce'</span>, <span class="string">'hann'</span>);
+        amp  = abs(hilbert(fdat'))';                        <span class="comment">% hilbert works down columns, so transpose in and out</span>
+
+        AlphaPre(:, iTrial)  = mean(amp(:, preIdx),  2);
+        AlphaBase(:, iTrial) = mean(amp(:, baseIdx), 2);
+        preAmp(:, :, iTrial) = amp(:, preIdx);
+    <span class="keyword">end</span>
+
+    AlphaPre_pSub{iSub}  = AlphaPre;
+    AlphaBase_pSub{iSub} = AlphaBase;
+
+    <span class="comment">% Mismatch-minus-match difference time course for the spatio-temporal</span>
+    <span class="comment">% cluster test, normalised by the per-condition mean baseline power (Wang</span>
+    <span class="comment">% et al.): a single baseline per condition, not one per trial. This is the</span>
+    <span class="comment">% same normalisation as the scalar AlphaDiff below -- applied at every</span>
+    <span class="comment">% sample instead of to the window mean -- so the two agree once</span>
+    <span class="comment">% time-averaged.</span>
+    baseMatched    = mean(AlphaBase(:, matched),    2);
+    baseMismatched = mean(AlphaBase(:, mismatched), 2);
+    tcMatched      = mean((preAmp(:, :, matched)    - baseMatched)    ./ baseMatched,    3);
+    tcMismatched   = mean((preAmp(:, :, mismatched) - baseMismatched) ./ baseMismatched, 3);
+    AlphaDiffTC_pSub{iSub} = tcMismatched - tcMatched;
+    clear <span class="string">preAmp</span>
+<span class="keyword">end</span>
+
+cd(resultdir)
+save(sprintf(<span class="string">'AlphaPower_pSub_%s.mat'</span>, ChanType), <span class="string">'AlphaPre_pSub'</span>, <span class="string">'AlphaBase_pSub'</span>, <span class="string">'TrialInds_pSub'</span>, <span class="string">'AnalysisChans'</span>)
+</pre>
+<pre class="codeoutput">Alpha power: subject 1 of 32
+Alpha power: subject 2 of 32
+Alpha power: subject 3 of 32
+Alpha power: subject 4 of 32
+Alpha power: subject 5 of 32
+Alpha power: subject 6 of 32
+Alpha power: subject 7 of 32
+Alpha power: subject 8 of 32
+Alpha power: subject 9 of 32
+Alpha power: subject 10 of 32
+Alpha power: subject 11 of 32
+Alpha power: subject 12 of 32
+Alpha power: subject 13 of 32
+Alpha power: subject 14 of 32
+Alpha power: subject 15 of 32
+Alpha power: subject 16 of 32
+Alpha power: subject 17 of 32
+Alpha power: subject 18 of 32
+Alpha power: subject 19 of 32
+Alpha power: subject 20 of 32
+Alpha power: subject 21 of 32
+Alpha power: subject 22 of 32
+Alpha power: subject 23 of 32
+Alpha power: subject 24 of 32
+Alpha power: subject 25 of 32
+Alpha power: subject 26 of 32
+Alpha power: subject 27 of 32
+Alpha power: subject 28 of 32
+Alpha power: subject 29 of 32
+Alpha power: subject 30 of 32
+Alpha power: subject 31 of 32
+Alpha power: subject 32 of 32
+</pre>
+<h2 id="6">Per-subject sensor averages for the cluster test</h2>
+<p>Baseline correction follows Wang et al.: pre-stimulus alpha is expressed relative to the mean baseline-window power across trials, computed separately within the matched and mismatched trials of each subject. The contrast taken forward is mismatch minus match, so that a positive value means alpha was higher before mismatched trials (equivalently, lower before matched ones).</p>
+<pre class="codeinput">AlphaDiff = nan(length(Subs), numel(AnalysisChans));   <span class="comment">% subject x channel</span>
+
+<span class="keyword">for</span> iSub = 1:length(Subs)
+
+    subRows    = Sync_pSub.ParticipantID == Subs(iSub);
+    matched    = Sync_pSub.Matched(subRows);
+    mismatched = Sync_pSub.Mismatched(subRows);
+
+    AlphaPre  = AlphaPre_pSub{iSub};
+    AlphaBase = AlphaBase_pSub{iSub};
+
+    baseMatched    = mean(AlphaBase(:, matched),    2);
+    baseMismatched = mean(AlphaBase(:, mismatched), 2);
+
+    normMatched    = mean((AlphaPre(:, matched)    - baseMatched)    ./ baseMatched,    2);
+    normMismatched = mean((AlphaPre(:, mismatched) - baseMismatched) ./ baseMismatched, 2);
+
+    AlphaDiff(iSub, :) = (normMismatched - normMatched)';
+<span class="keyword">end</span>
+</pre>
+<h2 id="7">Cluster-based permutation test</h2>
+<p>One-sample test across subjects of whether the mismatch-minus-match alpha difference exceeds zero, right-tailed, corrected by cluster-based permutation over channels AND time jointly (multiple samples within the -0.7 to -0.2 s window, not a single pre-averaged value per channel). This matches Wang et al.'s actual method (their multimodal_sensor_alpha_SME.py uses mne.stats.spatio_temporal_cluster_ 1samp_test with sensor adjacency combined with the time dimension via mne.stats.combine_adjacency), which their paper does not describe in this level of detail. FieldTrip does not need a separate option to enable the temporal half of this: once cfg.neighbours is set and the data carry more than one time sample, ft_timelockstatistics clusters over adjacent time points automatically, the same as adjacent channels. This defines the sensor set used by the memory analysis below.</p>
+<pre class="codeinput">
+<span class="comment">% Neighbours and the analysed channel set were built in the channel-set</span>
+<span class="comment">% section above, and are reused here.</span>
+
+dataDiff = cell(1, length(Subs));
+dataZero = cell(1, length(Subs));
+<span class="keyword">for</span> iSub = 1:length(Subs)
+    tl             = [];
+    tl.label       = AnalysisChans(:);
+    tl.time        = preTimes;
+    tl.dimord      = <span class="string">'chan_time'</span>;
+    tl.avg         = AlphaDiffTC_pSub{iSub};
+    dataDiff{iSub} = tl;
+
+    tl.avg         = zeros(size(AlphaDiffTC_pSub{iSub}));
+    dataZero{iSub} = tl;
+<span class="keyword">end</span>
+
+cfg                  = [];
+cfg.method           = <span class="string">'montecarlo'</span>;
+cfg.statistic        = <span class="string">'ft_statfun_depsamplesT'</span>;
+cfg.correctm         = <span class="string">'cluster'</span>;
+cfg.clusteralpha     = clusterAlpha;
+cfg.clusterstatistic = <span class="string">'maxsum'</span>;
+cfg.minnbchan        = minNeighbourChans;
+cfg.neighbours       = neighbours;
+cfg.tail             = statTail;
+cfg.clustertail      = statTail;
+<span class="keyword">if</span> statTail == 0
+    cfg.correcttail = <span class="string">'prob'</span>;   <span class="comment">% required for a two-tailed cluster test</span>
+<span class="keyword">end</span>
+cfg.alpha            = clusterAlpha;
+cfg.numrandomization = nPermutations;
+cfg.channel          = AnalysisChans;
+
+nSub        = length(Subs);
+cfg.design  = [1:nSub, 1:nSub; ones(1, nSub), 2 * ones(1, nSub)];
+cfg.uvar    = 1;   <span class="comment">% unit of observation: subject</span>
+cfg.ivar    = 2;   <span class="comment">% independent variable: difference vs zero</span>
+
+stat = ft_timelockstatistics(cfg, dataDiff{:}, dataZero{:});
+
+<span class="comment">% Everything below indexes stat.mask and stat.stat positionally against</span>
+<span class="comment">% AnalysisChans (e.g. AnalysisChans(clusterChanMask), and passing statChanMax</span>
+<span class="comment">% to spm_eeg_plotScalpData with AnalysisChans). That is only valid if FieldTrip</span>
+<span class="comment">% returned the channels in the same order they went in. It does, but a silent</span>
+<span class="comment">% reordering would attach the effect to the wrong sensors and carry that error</span>
+<span class="comment">% into the exported memory table, so it is checked rather than assumed.</span>
+assert(isequal(stat.label(:), AnalysisChans(:)), <span class="keyword">...</span>
+    [<span class="string">'ft_timelockstatistics returned channels in a different order to '</span> <span class="keyword">...</span>
+     <span class="string">'AnalysisChans; reorder stat.stat/stat.mask to AnalysisChans before the '</span> <span class="keyword">...</span>
+     <span class="string">'positional indexing below.'</span>]);
+
+<span class="comment">% stat.mask and stat.stat are now channel x time (multiple samples within</span>
+<span class="comment">% the pre-stimulus window), not channel x 1 as they were with a single</span>
+<span class="comment">% pre-averaged time point. A channel counts as part of the cluster if any</span>
+<span class="comment">% of its time samples are, and per-channel summaries below use the</span>
+<span class="comment">% strongest (most positive) time sample for that channel, since that is</span>
+<span class="comment">% the one driving cluster membership.</span>
+clusterChanMask = any(stat.mask, 2);
+ClusterChans    = AnalysisChans(clusterChanMask);
+statChanMax      = max(stat.stat, [], 2);   <span class="comment">% one value per channel, for summaries/plots below</span>
+
+<span class="comment">% Distribution of the observed statistic. This distinguishes an absent</span>
+<span class="comment">% effect from one running in the opposite direction to the test, which a</span>
+<span class="comment">% one-tailed test cannot detect. Chance alone would put roughly 5% of</span>
+<span class="comment">% channels beyond the one-tailed threshold, so finding far</span>
+<span class="comment">% fewer in the tested direction (and many in the other) indicates the</span>
+<span class="comment">% effect is reversed rather than missing.</span>
+tThresh = tinv(1 - clusterAlpha, length(Subs) - 1);
+fprintf(<span class="string">'\n--- Statistic summary ---\n'</span>);
+fprintf(<span class="string">'Cluster-forming |t| threshold (df = %d): %.3f\n'</span>, length(Subs) - 1, tThresh);
+fprintf(<span class="string">'t (per channel, strongest time sample): min %.2f, max %.2f, mean %.2f\n'</span>, <span class="keyword">...</span>
+    min(statChanMax), max(statChanMax), mean(statChanMax));
+fprintf(<span class="string">'Channels with t &gt; +%.2f at their strongest sample: %d    t &lt; -%.2f: %d    (of %d)\n'</span>, <span class="keyword">...</span>
+    tThresh, sum(statChanMax &gt;  tThresh), <span class="keyword">...</span>
+    tThresh, sum(min(stat.stat, [], 2) &lt; -tThresh), numel(statChanMax));
+fprintf(<span class="string">'Mean alpha difference (mismatch - match) over channels and subjects: %.4f\n'</span>, <span class="keyword">...</span>
+    mean(AlphaDiff(:)));
+fprintf(<span class="string">'Subjects with a positive mean difference: %d of %d\n'</span>, <span class="keyword">...</span>
+    sum(mean(AlphaDiff, 2) &gt; 0), length(Subs));
+
+<span class="comment">% Report every cluster that formed, in both directions, not only the</span>
+<span class="comment">% surviving ones. A cluster at p just above threshold means something quite</span>
+<span class="comment">% different from no cluster forming at all, and that distinction is</span>
+<span class="comment">% invisible from stat.mask alone.</span>
+<span class="keyword">if</span> isfield(stat, <span class="string">'posclusters'</span>) &amp;&amp; ~isempty(stat.posclusters)
+    fprintf(<span class="string">'Positive clusters: %d, p-values: %s\n'</span>, <span class="keyword">...</span>
+        numel(stat.posclusters), mat2str(round([stat.posclusters.prob], 4)));
+<span class="keyword">else</span>
+    fprintf(<span class="string">'No positive clusters formed at the cluster-forming threshold.\n'</span>);
+<span class="keyword">end</span>
+<span class="keyword">if</span> isfield(stat, <span class="string">'negclusters'</span>) &amp;&amp; ~isempty(stat.negclusters)
+    fprintf(<span class="string">'Negative clusters: %d, p-values: %s\n'</span>, <span class="keyword">...</span>
+        numel(stat.negclusters), mat2str(round([stat.negclusters.prob], 4)));
+<span class="keyword">else</span>
+    fprintf(<span class="string">'No negative clusters formed at the cluster-forming threshold.\n'</span>);
+<span class="keyword">end</span>
+
+fprintf(<span class="string">'Sensors in significant cluster: %d\n'</span>, numel(ClusterChans));
+
+<span class="comment">% --- Where the effect sits on the scalp ---</span>
+<span class="comment">% Reported whether or not a cluster survives, so the spatial pattern can be</span>
+<span class="comment">% compared with the topography Wang et al. report even when the statistics</span>
+<span class="comment">% fall short. Their gradiometer cluster covered 61 sensors and localised to</span>
+<span class="comment">% left posterior parietal cortex (MNI -24, -75, 14), so a comparable effect</span>
+<span class="comment">% here should concentrate over left posterior sensors.</span>
+<span class="comment">%</span>
+<span class="comment">% Positions come from the 2D sensor layout, in which the first row runs left</span>
+<span class="comment">% to right and the second front to back. The centroid of the suprathreshold</span>
+<span class="comment">% channels, and how it compares with the centroid of the whole array, says</span>
+<span class="comment">% which part of the array carries the effect without needing a cluster.</span>
+supra = statChanMax &gt; tThresh;
+<span class="keyword">if</span> any(supra)
+    [~, layIdx] = ismember(AnalysisChans, Dref.chanlabels);
+    XYall2 = Dref.coor2D;
+    XYlay  = XYall2(:, layIdx);
+
+    cSup = mean(XYlay(:, supra), 2);
+    cAll = mean(XYlay, 2);
+
+    fprintf(<span class="string">'\nSuprathreshold channels (t &gt; %.2f): %d of %d\n'</span>, tThresh, sum(supra), numel(supra));
+    fprintf(<span class="string">'  layout centroid: left-right %.3f, front-back %.3f (array centre %.3f, %.3f)\n'</span>, <span class="keyword">...</span>
+        cSup(1), cSup(2), cAll(1), cAll(2));
+    fprintf(<span class="string">'  relative to the array centre: %s, %s\n'</span>, <span class="keyword">...</span>
+        ternary_str(cSup(1) &lt; cAll(1), <span class="string">'leftward'</span>, <span class="string">'rightward'</span>), <span class="keyword">...</span>
+        ternary_str(cSup(2) &lt; cAll(2), <span class="string">'posterior'</span>, <span class="string">'anterior'</span>));
+    fprintf(<span class="string">'  channels: %s\n'</span>, strjoin(AnalysisChans(supra), <span class="string">' '</span>));
+
+    <span class="comment">% Same, weighted by t, so the strongest channels count for more</span>
+    w = statChanMax; w(~supra) = 0; w = w / sum(w);
+    cW = XYlay * w;
+    fprintf(<span class="string">'  t-weighted centroid: left-right %.3f, front-back %.3f\n'</span>, cW(1), cW(2));
+
+    <span class="comment">% Verify the layout convention before trusting those direction labels.</span>
+    <span class="comment">% The code assumes higher values on the first row mean rightward and on</span>
+    <span class="comment">% the second row mean anterior, which is the usual topoplot convention,</span>
+    <span class="comment">% but a flip on either axis would invert the conclusion. Printing the</span>
+    <span class="comment">% channels at the four extremes makes this checkable against any standard</span>
+    <span class="comment">% Neuromag layout figure: the channel reported as most anterior should be</span>
+    <span class="comment">% a frontal one, and the one reported as leftmost should be over the left</span>
+    <span class="comment">% hemisphere.</span>
+    [~, iL] = min(XYlay(1, :));  [~, iR] = max(XYlay(1, :));
+    [~, iP] = min(XYlay(2, :));  [~, iA] = max(XYlay(2, :));
+    fprintf([<span class="string">'  layout check -- extreme channels: lowest left-right %s, highest %s; '</span> <span class="keyword">...</span>
+             <span class="string">'lowest front-back %s, highest %s\n'</span>], <span class="keyword">...</span>
+        AnalysisChans{iL}, AnalysisChans{iR}, AnalysisChans{iP}, AnalysisChans{iA});
+    fprintf([<span class="string">'    (the direction labels above assume higher = rightward and higher = '</span> <span class="keyword">...</span>
+             <span class="string">'anterior; confirm against a Neuromag layout before relying on them)\n'</span>]);
+
+    <span class="comment">% Ocular contamination check. Eye movements and blinks project most</span>
+    <span class="comment">% strongly onto anterior sensors, so an alpha effect whose topography is</span>
+    <span class="comment">% frontally weighted cannot be separated from ocular activity unless</span>
+    <span class="comment">% component-based artefact removal has been applied. This pipeline's</span>
+    <span class="comment">% preprocessing flags bad channels and trials but does not remove ocular</span>
+    <span class="comment">% components, and EOG is discarded at conversion, so no direct check is</span>
+    <span class="comment">% available. Wang et al. (2026) both ran ICA and compared fixation</span>
+    <span class="comment">% density between conditions for precisely this reason, and their effect</span>
+    <span class="comment">% was posterior.</span>
+    <span class="keyword">if</span> cSup(2) &gt; cAll(2)
+        warning([<span class="string">'The suprathreshold channels sit anterior to the array centre. '</span> <span class="keyword">...</span>
+                 <span class="string">'Ocular activity projects most strongly onto anterior sensors, and '</span> <span class="keyword">...</span>
+                 <span class="string">'this pipeline performs no component-based removal of it, so an '</span> <span class="keyword">...</span>
+                 <span class="string">'anterior alpha difference cannot be distinguished from eye-movement '</span> <span class="keyword">...</span>
+                 <span class="string">'contamination. Note also that Wang et al. report a posterior, '</span> <span class="keyword">...</span>
+                 <span class="string">'left-lateralised effect, so an anterior one is not a weaker version '</span> <span class="keyword">...</span>
+                 <span class="string">'of their result. Treat it as uninterpretable until ICA is added or '</span> <span class="keyword">...</span>
+                 <span class="string">'an eye-movement control is run.'</span>]);
+    <span class="keyword">end</span>
+<span class="keyword">end</span>
+</pre>
+<pre class="codeoutput">using "ft_statistics_montecarlo" for the statistical testing
+using "ft_statfun_depsamplesT" for the single-sample statistics
+constructing randomized design
+total number of measurements     = 64
+total number of variables        = 2
+number of independent variables  = 1
+number of unit variables         = 1
+number of within-cell variables  = 0
+number of control variables      = 0
+using a permutation resampling approach
+repeated measurement in variable 1 over 32 levels
+number of repeated measurements in each level is 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 
+computing a parametric threshold for clustering
+computing statistic
+estimated time per randomization is 0.13 seconds
+computing statistic 1000 from 1000
+
+found 9 positive clusters in observed data
+computing clusters in randomization
+computing clusters in randomization 1000 from 1000
+
+using a cluster-based method for multiple comparison correction
+the returned probabilities and the thresholded mask are corrected for multiple comparisons
+
+--- Statistic summary ---
+Cluster-forming |t| threshold (df = 31): 1.696
+t (per channel, strongest time sample): min -1.68, max 2.73, mean 0.70
+Channels with t &gt; +1.70 at their strongest sample: 19    t &lt; -1.70: 31    (of 204)
+Mean alpha difference (mismatch - match) over channels and subjects: -0.0088
+Subjects with a positive mean difference: 16 of 32
+Positive clusters: 9, p-values: [0.7572 0.8162 0.8182 0.985 0.987 0.99 0.992 0.996 0.999]
+No negative clusters formed at the cluster-forming threshold.
+Sensors in significant cluster: 0
+
+Suprathreshold channels (t &gt; 1.70): 19 of 204
+  layout centroid: left-right 0.451, front-back 0.531 (array centre 0.503, 0.559)
+  relative to the array centre: leftward, posterior
+  channels: MEG0123 MEG0313 MEG0323 MEG0332 MEG0342 MEG0612 MEG0643 MEG1243 MEG1533 MEG1543 MEG1713 MEG1942 MEG2012 MEG2143 MEG2242 MEG2532 MEG2613 MEG2632 MEG2633
+  t-weighted centroid: left-right 0.452, front-back 0.537
+  layout check -- extreme channels: lowest left-right MEG1542, highest MEG2622; lowest front-back MEG2142, highest MEG0812
+    (the direction labels above assume higher = rightward and higher = anterior; confirm against a Neuromag layout before relying on them)
+</pre>
+<h2 id="8">Sensor selection for the trial-level analyses</h2>
+<p>The cluster defines the sensors. If no cluster survived, the result is a null: pre-stimulus alpha does not distinguish matched from mismatched trials anywhere on the array at the tested threshold. There is no fallback sensor set to substitute -- picking one after the fact (e.g. the channels with the highest raw alpha power, or all channels) would not be a principled way to rescue a trial-level memory analysis from a null spatial result. The topographies below are still shown regardless, since they are diagnostic rather than a claim of an effect, but the sensor-selection-dependent plots and the trial-level memory analyses further down are skipped.</p>
+<pre class="codeinput">SelectedChans = ClusterChans;
+SensorSource  = <span class="string">'cluster-defined'</span>;
+stopBeforeSelectedSensorPlots = isempty(ClusterChans);
+
+<span class="keyword">if</span> stopBeforeSelectedSensorPlots
+    fprintf([<span class="string">'\nConclusion: no significant cluster. Read the statistic summary above '</span> <span class="keyword">...</span>
+             <span class="string">'before treating this as a clean absence of an effect: t values centred '</span> <span class="keyword">...</span>
+             <span class="string">'near zero with few channels beyond threshold in either direction '</span> <span class="keyword">...</span>
+             <span class="string">'indicate a genuine null, whereas a preponderance of one sign indicates '</span> <span class="keyword">...</span>
+             <span class="string">'an effect the tested tail cannot detect. The topographies below are '</span> <span class="keyword">...</span>
+             <span class="string">'still shown; the sensor-selection-dependent plots and the trial-level '</span> <span class="keyword">...</span>
+             <span class="string">'memory analyses after them are skipped, since there is no sensor set to '</span> <span class="keyword">...</span>
+             <span class="string">'run them on.\n'</span>]);
+<span class="keyword">else</span>
+    fprintf(<span class="string">'\nSensor set for trial-level analyses: %s (%d channels)\n'</span>, <span class="keyword">...</span>
+        SensorSource, numel(SelectedChans));
+<span class="keyword">end</span>
+
+cd(resultdir)
+save(sprintf(<span class="string">'AlphaCluster_%s.mat'</span>, ChanType), <span class="string">'stat'</span>, <span class="string">'ClusterChans'</span>, <span class="string">'SelectedChans'</span>, <span class="keyword">...</span>
+     <span class="string">'SensorSource'</span>, <span class="string">'AlphaDiff'</span>, <span class="string">'AnalysisChans'</span>)
+</pre>
+<pre class="codeoutput">
+Conclusion: no significant cluster. Read the statistic summary above before treating this as a clean absence of an effect: t values centred near zero with few channels beyond threshold in either direction indicate a genuine null, whereas a preponderance of one sign indicates an effect the tested tail cannot detect. The topographies below are still shown; the sensor-selection-dependent plots and the trial-level memory analyses after them are skipped, since there is no sensor set to run them on.
+</pre>
+<h2 id="9">Per-trial alpha over the selected sensors</h2>
+<p>For the trial-level analyses, alpha is averaged over the cluster sensors and expressed relative to a single per-subject baseline computed across all analysed trials. A single baseline is used here (rather than the condition-specific baselines used for the cluster test above) because the memory analysis bins trials by alpha irrespective of whether they matched their condition; using condition-specific baselines would partly remove the very variance being examined.</p>
+<pre class="codeinput">AlphaTrial = nan(height(Sync_pSub), 1);
+
+<span class="keyword">for</span> iSub = 1:length(Subs)
+
+    subRows  = find(Sync_pSub.ParticipantID == Subs(iSub));
+    [~, cIdx] = ismember(SelectedChans, AnalysisChans);
+
+    AlphaPre  = AlphaPre_pSub{iSub}(cIdx, :);
+    AlphaBase = AlphaBase_pSub{iSub}(cIdx, :);
+
+    baseAll = mean(AlphaBase, 2);                                  <span class="comment">% channel x 1</span>
+    normPre = (AlphaPre - baseAll) ./ baseAll;                     <span class="comment">% channel x trial</span>
+
+    AlphaTrial(subRows) = mean(normPre, 1)';                       <span class="comment">% average over cluster sensors</span>
+<span class="keyword">end</span>
+
+Sync_pSub.Alpha = AlphaTrial;
+
+<span class="comment">% Trial order within each subject, for the first/second half split. Trial</span>
+<span class="comment">% index in the merged file tracks temporal order, since Preprocessing.m</span>
+<span class="comment">% concatenates runs 1 -&gt; 2 -&gt; 3 and trials within each run are in order.</span>
+Sync_pSub.TrialOrder = nan(height(Sync_pSub), 1);
+<span class="keyword">for</span> iSub = 1:length(Subs)
+    subRows = find(Sync_pSub.ParticipantID == Subs(iSub));
+    [~, ord] = sort(Sync_pSub.TrialNum(subRows));
+    rank = nan(size(ord));
+    rank(ord) = 1:length(ord);
+    Sync_pSub.TrialOrder(subRows) = rank;
+<span class="keyword">end</span>
+</pre>
+<h2 id="10">Behavioural data</h2>
+<p>Reads the per-trial memory outcome, and the stimulus (clip) identity, from the same per-subject behavioural CSVs used by the combining section of Analysis.m. Each file holds one row per encoding trial in merged-MEG-file order, so TrialNum indexes directly into its rows.</p>
+<p>Set MemoryVar and ClipVar below to whichever columns in those files hold the subsequent-memory outcome (1 = recalled, 0 = forgotten) and the stimulus identity. The script lists the available column names if either is not found. ClipID supports a by-clip random intercept in the R models downstream, alongside the by-participant one.</p>
+<pre class="codeinput">BehDir    = <span class="string">'/imaging/henson/TIME/BehavioralAnalysisScripts/CombinedMemoryData'</span>;
+MemoryVar = <span class="string">'Accuracy'</span>;   <span class="comment">% subsequent-memory outcome, 1 = recalled, 0 = forgotten</span>
+ClipVar   = <span class="string">'ClipID'</span>;     <span class="comment">% stimulus identity, for a by-clip random intercept in R</span>
+
+d = dir(fullfile(BehDir, <span class="string">'*.csv'</span>));
+
+<span class="comment">% Files are mapped to subjects by their position in this listing, which</span>
+<span class="comment">% corresponds to the original (pre-exclusion) subject numbering, so</span>
+<span class="comment">% SubFileIdx is used rather than the loop counter.</span>
+<span class="keyword">if</span> length(d) &lt; max(SubFileIdx)
+    error([<span class="string">'Found %d behavioural files, but subject %d requires file %d. '</span> <span class="keyword">...</span>
+           <span class="string">'The file listing does not cover all analysed subjects.'</span>], <span class="keyword">...</span>
+           length(d), Subs(end), max(SubFileIdx));
+<span class="keyword">end</span>
+
+Sync_pSub.Remembered = nan(height(Sync_pSub), 1);
+Sync_pSub.ClipID     = repmat({<span class="string">''</span>}, height(Sync_pSub), 1);
+
+<span class="keyword">for</span> iSub = 1:length(Subs)
+
+    Sub_Data = readtable(fullfile(BehDir, d(SubFileIdx(iSub)).name));
+
+    <span class="keyword">if</span> ~ismember(MemoryVar, Sub_Data.Properties.VariableNames)
+        error([<span class="string">'Column "%s" not found in %s. Available columns are:\n  %s\n'</span> <span class="keyword">...</span>
+               <span class="string">'Set MemoryVar to the correct one.'</span>], <span class="keyword">...</span>
+               MemoryVar, d(SubFileIdx(iSub)).name, strjoin(Sub_Data.Properties.VariableNames, <span class="string">', '</span>));
+    <span class="keyword">end</span>
+    <span class="keyword">if</span> ~ismember(ClipVar, Sub_Data.Properties.VariableNames)
+        error([<span class="string">'Column "%s" not found in %s. Available columns are:\n  %s\n'</span> <span class="keyword">...</span>
+               <span class="string">'Set ClipVar to the correct one.'</span>], <span class="keyword">...</span>
+               ClipVar, d(SubFileIdx(iSub)).name, strjoin(Sub_Data.Properties.VariableNames, <span class="string">', '</span>));
+    <span class="keyword">end</span>
+
+    subRows = find(Sync_pSub.ParticipantID == Subs(iSub));
+    trialNo = TrialMap{SubFileIdx(iSub)}(Sync_pSub.TrialNum(subRows))';
+
+    <span class="keyword">if</span> any(trialNo &gt; height(Sub_Data))
+        error([<span class="string">'Subject %d: an MEG trial index (%d) exceeds the number of '</span> <span class="keyword">...</span>
+               <span class="string">'behavioural trials (%d). MEG and behavioural trials are '</span> <span class="keyword">...</span>
+               <span class="string">'misaligned.'</span>], Subs(iSub), max(trialNo), height(Sub_Data));
+    <span class="keyword">end</span>
+
+    <span class="comment">% Alignment check. Every trial in Sync_pSub is a theta-condition trial,</span>
+    <span class="comment">% so the behavioural file's condition label at the corresponding row</span>
+    <span class="comment">% must agree. Disagreement means the row-index mapping is wrong for this</span>
+    <span class="comment">% subject and its memory outcomes would be attached to the wrong trials.</span>
+    <span class="keyword">if</span> ismember(<span class="string">'Condition'</span>, Sub_Data.Properties.VariableNames)
+        nDisagree = sum(~strcmp(Sub_Data.Condition(trialNo), Sync_pSub.Condition(subRows)));
+        <span class="keyword">if</span> nDisagree &gt; 0
+            error([<span class="string">'Subject %d (%s): MEG and behavioural condition labels disagree on '</span> <span class="keyword">...</span>
+                   <span class="string">'%d of %d trials, so its memory outcomes would be attached to the '</span> <span class="keyword">...</span>
+                   <span class="string">'wrong trials. TrialMap was verified in Analysis.m against these '</span> <span class="keyword">...</span>
+                   <span class="string">'same labels, so reaching this point means TrialMap.mat is stale '</span> <span class="keyword">...</span>
+                   <span class="string">'relative to Synchronicity.mat; re-run Analysis.m.'</span>], <span class="keyword">...</span>
+                   Subs(iSub), d(SubFileIdx(iSub)).name, nDisagree, length(trialNo));
+        <span class="keyword">end</span>
+    <span class="keyword">end</span>
+
+    Sync_pSub.Remembered(subRows) = Sub_Data.(MemoryVar)(trialNo);
+
+    <span class="comment">% ClipID may come through as numeric, string, or categorical depending</span>
+    <span class="comment">% on how the behavioural file stores it; converted to a cell array of</span>
+    <span class="comment">% char here so the merged column has one consistent type regardless,</span>
+    <span class="comment">% since Sync_pSub.ClipID above was initialised as a cell array.</span>
+    clipVals = Sub_Data.(ClipVar)(trialNo);
+    <span class="keyword">if</span> isnumeric(clipVals)
+        clipVals = cellstr(num2str(clipVals));
+    <span class="keyword">elseif</span> iscategorical(clipVals)
+        clipVals = cellstr(clipVals);
+    <span class="keyword">elseif</span> ~iscell(clipVals)
+        clipVals = cellstr(string(clipVals));
+    <span class="keyword">end</span>
+    Sync_pSub.ClipID(subRows) = clipVals;
+<span class="keyword">end</span>
+
+
+
+fprintf(<span class="string">'Trials with a memory outcome: %d of %d\n'</span>, <span class="keyword">...</span>
+    sum(~isnan(Sync_pSub.Remembered)), height(Sync_pSub));
+</pre>
+<pre class="codeoutput">Trials with a memory outcome: 2778 of 2778
+</pre>
+<h2 id="11">Export trial-level table</h2>
+<p>One row per trial, for mixed-effects modelling in R alongside the other trial-level measures produced by Analysis.m.</p>
+<pre class="codeinput">cd(resultdir)
+writetable(Sync_pSub, sprintf(<span class="string">'AlphaTrialLevel_%s.csv'</span>, ChanType))
+save(sprintf(<span class="string">'AlphaTrialLevel_%s.mat'</span>, ChanType), <span class="string">'Sync_pSub'</span>)
+</pre>
+<h2 id="12">Diagnostic plots</h2>
+<p>Checks on the steps above, before any result is interpreted. None of this feeds back into the saved outputs.</p>
+<pre class="codeinput">
+<span class="comment">% Sensor 2D layout for the analysed channels. Dref was loaded in the</span>
+<span class="comment">% channel-set section above.</span>
+<span class="comment">% coor2D is a meeg method, not a stored array, so it must be called and</span>
+<span class="comment">% assigned before being indexed. Writing Dref.coor2D(:, refIdx) directly</span>
+<span class="comment">% is parsed as a three-argument call and hits the setter instead, which</span>
+<span class="comment">% fails with "Index in position 1 exceeds array bounds".</span>
+[~, refIdx] = ismember(AnalysisChans, Dref.chanlabels);
+<span class="keyword">if</span> any(refIdx == 0)
+    error(<span class="string">'%d analysed channels are absent from the layout reference file.'</span>, <span class="keyword">...</span>
+           sum(refIdx == 0));
+<span class="keyword">end</span>
+XYall       = Dref.coor2D;
+XYplot      = XYall(:, refIdx);
+in          = [];
+in.chantype = ChanType;
+
+<span class="comment">% --- Phase-lag distributions with the matched/mismatched boundaries ---</span>
+<span class="comment">% Shows how the +/- 90 deg split falls relative to the actual data. If the</span>
+<span class="comment">% distribution is centred well away from the expected phase, centring the</span>
+<span class="comment">% bins on the observed mean instead should be considered.</span>
+<span class="keyword">for</span> iCond = 1:length(PhaseConds)
+    figure
+    condLag = Sync_pSub.Synchronicity(strcmp(Sync_pSub.Condition, PhaseConds{iCond}));
+    polarhistogram(condLag, 36);
+    hold <span class="string">on</span>
+    rl = rlim;
+    polarplot([ExpectedPhase(iCond) ExpectedPhase(iCond)], [0 rl(2)], <span class="string">'-k'</span>, <span class="string">'LineWidth'</span>, 2);
+    <span class="keyword">for</span> bnd = ExpectedPhase(iCond) + [-MatchedBound MatchedBound]
+        polarplot([bnd bnd], [0 rl(2)], <span class="string">'--r'</span>, <span class="string">'LineWidth'</span>, 1.5);
+    <span class="keyword">end</span>
+    <span class="keyword">for</span> bnd = ExpectedPhase(iCond) + [-MismatchedBound MismatchedBound]
+        polarplot([bnd bnd], [0 rl(2)], <span class="string">'--m'</span>, <span class="string">'LineWidth'</span>, 1.5);
+    <span class="keyword">end</span>
+    obsMean = angle(mean(exp(1i * condLag)));
+    polarplot([obsMean obsMean], [0 rl(2)], <span class="string">'--b'</span>, <span class="string">'LineWidth'</span>, 1.5);
+    title(sprintf([<span class="string">'%s: expected (black), matched edge (red), mismatched edge '</span> <span class="keyword">...</span>
+        <span class="string">'(magenta), observed mean (blue) = %.1f%c'</span>], <span class="keyword">...</span>
+        PhaseConds{iCond}, obsMean * 180 / pi, char(176)))
+    save_fig(gcf, sprintf(<span class="string">'alpha_phaselag_bounds_%s'</span>, lower(PhaseConds{iCond})))
+<span class="keyword">end</span>
+
+<span class="comment">% --- Proportion of matched trials per subject ---</span>
+<span class="comment">% Wang et al. found roughly half of trials failed to match their intended</span>
+<span class="comment">% phase offset. A subject near 0 or 1 indicates something has gone wrong</span>
+<span class="comment">% with their phase estimate rather than genuine trial-by-trial variability.</span>
+matchProp = arrayfun(@(s) sum(Sync_pSub.Matched(Sync_pSub.ParticipantID == s)) / <span class="keyword">...</span>
+    max(sum(Sync_pSub.Matched(Sync_pSub.ParticipantID == s)) + <span class="keyword">...</span>
+        sum(Sync_pSub.Mismatched(Sync_pSub.ParticipantID == s)), 1), Subs);
+figure
+bar(Subs, matchProp)
+hold <span class="string">on</span>
+yline(0.5, <span class="string">'--k'</span>, <span class="string">'LineWidth'</span>, 1.5);
+xlabel(<span class="string">'Subject'</span>); ylabel(<span class="string">'Proportion of matched trials'</span>)
+title(<span class="string">'Matched share of classified (non-ambiguous) trials'</span>); ylim([0 1])
+save_fig(gcf, <span class="string">'alpha_matched_proportion_persub'</span>)
+
+<span class="comment">% --- Trials per subject entering the analysis ---</span>
+nMatched    = arrayfun(@(s) sum(Sync_pSub.Matched(Sync_pSub.ParticipantID == s)),    Subs);
+nMismatched = arrayfun(@(s) sum(Sync_pSub.Mismatched(Sync_pSub.ParticipantID == s)), Subs);
+nAmbiguous  = arrayfun(@(s) sum(Sync_pSub.Ambiguous(Sync_pSub.ParticipantID == s)),  Subs);
+figure
+bar(Subs, [nMatched(:) nMismatched(:) nAmbiguous(:)], <span class="string">'stacked'</span>)
+legend({<span class="string">'Matched'</span>, <span class="string">'Mismatched'</span>, <span class="string">'Ambiguous (excluded)'</span>}, <span class="string">'Location'</span>, <span class="string">'best'</span>)
+xlabel(<span class="string">'Subject'</span>); ylabel(<span class="string">'Trials'</span>)
+title(<span class="string">'Trial counts entering the alpha contrast'</span>)
+save_fig(gcf, <span class="string">'alpha_trial_counts_persub'</span>)
+
+<span class="comment">% --- Topography of the mismatch-minus-match alpha difference ---</span>
+figure; in.f = gcf().Number;
+[~, ~] = spm_eeg_plotScalpData(mean(AlphaDiff, 1)', XYplot, AnalysisChans, in);
+title(<span class="string">'Pre-stimulus alpha: mismatch minus match'</span>)
+save_fig(gcf, <span class="string">'alpha_topo_mismatch_minus_match'</span>)
+
+<span class="comment">% --- Uncorrected t-statistics ---</span>
+<span class="comment">% Shown regardless of whether a cluster survived correction. If a plausible</span>
+<span class="comment">% spatial pattern is visible here but no cluster formed, the problem is</span>
+<span class="comment">% likelier to be the clustering setup (neighbour count, cluster-forming</span>
+<span class="comment">% threshold) than an absent effect.</span>
+figure; in.f = gcf().Number;
+[~, ~] = spm_eeg_plotScalpData(statChanMax, XYplot, AnalysisChans, in);
+title(<span class="string">'Pre-stimulus alpha: uncorrected t-statistics (mismatch minus match, strongest time sample per channel)'</span>)
+save_fig(gcf, <span class="string">'alpha_topo_tstat_uncorrected'</span>)
+
+<span class="comment">% Topographies above are shown regardless of the cluster result. Everything</span>
+<span class="comment">% from here on needs an actual sensor selection, which does not exist when</span>
+<span class="comment">% no cluster survived (see "Sensor selection for the trial-level analyses"</span>
+<span class="comment">% above) -- stop here in that case rather than plotting an empty selection</span>
+<span class="comment">% or continuing into a trial-level analysis with no sensors to run it on.</span>
+<span class="keyword">if</span> stopBeforeSelectedSensorPlots
+    <span class="keyword">return</span>
+<span class="keyword">end</span>
+
+<span class="comment">% --- Selected sensors ---</span>
+figure; hold <span class="string">on</span>
+plot(XYplot(1, :), XYplot(2, :), <span class="string">'o'</span>, <span class="string">'MarkerSize'</span>, 8)
+<span class="keyword">if</span> ~isempty(SelectedChans)
+    [~, cIdxPlot] = ismember(SelectedChans, AnalysisChans);
+    plot(XYplot(1, cIdxPlot), XYplot(2, cIdxPlot), <span class="string">'.k'</span>, <span class="string">'MarkerSize'</span>, 30)
+<span class="keyword">end</span>
+title(sprintf(<span class="string">'Selected sensors: %s (%d of %d common channels)'</span>, <span class="keyword">...</span>
+    SensorSource, numel(SelectedChans), numel(AnalysisChans)))
+axis <span class="string">off</span>
+save_fig(gcf, <span class="string">'alpha_selected_sensors'</span>)
+
+<span class="comment">% --- Per-subject consistency over the selected sensors ---</span>
+<span class="comment">% The group statistic collapses across subjects; this shows whether the</span>
+<span class="comment">% difference is consistent or driven by a few participants.</span>
+<span class="keyword">if</span> ~isempty(SelectedChans)
+    [~, cIdxPlot] = ismember(SelectedChans, AnalysisChans);
+    subClusterDiff = mean(AlphaDiff(:, cIdxPlot), 2);
+    figure
+    bar(Subs, subClusterDiff)
+    hold <span class="string">on</span>
+    yline(0, <span class="string">'-k'</span>, <span class="string">'LineWidth'</span>, 1.5);
+    yline(mean(subClusterDiff), <span class="string">'--r'</span>, <span class="string">'LineWidth'</span>, 1.5);
+    xlabel(<span class="string">'Subject'</span>); ylabel(<span class="string">'Alpha difference (mismatch - match)'</span>)
+    title(sprintf(<span class="string">'Alpha difference per subject over selected sensors (group mean = %.3f)'</span>, <span class="keyword">...</span>
+        mean(subClusterDiff)))
+    save_fig(gcf, <span class="string">'alpha_diff_persub_selected_sensors'</span>)
+<span class="keyword">end</span>
+</pre>
+<h2 id="13">Memory analysis</h2>
+<p>Moved to MEGxBeh.Rmd, which reads AlphaTrialLevel_&lt;ChanType&gt;.csv exported above.</p>
+<p>The version that used to sit here split the session in half by trial order, median split alpha within each half, subsampled to equalise trial counts between conditions, and ran a 2x2x2 repeated-measures ANOVA on the result. With roughly 48 trials per condition that left about 12 trials per cell, so each cell mean carried a standard error near 0.14, and the chain discarded the magnitude of alpha within each bin, the ordering within each half, and whatever trials the subsampling dropped.</p>
+<p>The mixed-effects models in R use every trial, keep alpha continuous, carry trial order as a covariate rather than as a split, and weight each participant by how much data they contribute rather than equally. The binned form is still reported there for comparability with Wang et al.</p>
+<p>Everything those models need is in the exported table: ParticipantID, TrialNum, Condition, Synchronicity, EntrainStrength, Matched, Mismatched, Ambiguous, Alpha, TrialOrder and Remembered.</p>
+<h2 id="14">Results inspection plots</h2>
+<p>Visual checks on the trial-level alpha measure and the memory result.</p>
+<pre class="codeinput">
+<span class="comment">% --- Distribution of trial-level alpha ---</span>
+<span class="comment">% The memory analysis median-splits this within each half of trials, so</span>
+<span class="comment">% the distribution should be reasonably continuous. A strongly bimodal or</span>
+<span class="comment">% heavily skewed distribution would make the median split arbitrary.</span>
+figure
+histogram(Sync_pSub.Alpha, 50)
+xlabel(<span class="string">'Pre-stimulus alpha (baseline-corrected, cluster mean)'</span>)
+ylabel(<span class="string">'Trials'</span>)
+title(<span class="string">'Trial-level pre-stimulus alpha'</span>)
+save_fig(gcf, <span class="string">'alpha_trial_level_distribution'</span>)
+
+<span class="comment">% --- Alpha by subject ---</span>
+<span class="comment">% Checks that no subject dominates the range, which would distort a</span>
+<span class="comment">% pooled analysis.</span>
+figure
+boxplot(Sync_pSub.Alpha, Sync_pSub.ParticipantID)
+xlabel(<span class="string">'Subject'</span>); ylabel(<span class="string">'Pre-stimulus alpha'</span>)
+title(<span class="string">'Trial-level alpha by subject'</span>)
+save_fig(gcf, <span class="string">'alpha_by_subject_boxplot'</span>)
+
+<span class="comment">% --- Alpha against entrainment strength ---</span>
+<span class="comment">% The relationship the mixed-effects models test directly. Plotted here</span>
+<span class="comment">% pooled across trials purely for inspection; the model accounts for the</span>
+<span class="comment">% nesting within subjects that this plot ignores.</span>
+figure
+scatter(Sync_pSub.Alpha, Sync_pSub.EntrainStrength, 8, <span class="string">'filled'</span>, <span class="string">'MarkerFaceAlpha'</span>, 0.2)
+xlabel(<span class="string">'Pre-stimulus alpha'</span>); ylabel(<span class="string">'Entrainment strength'</span>)
+title(<span class="string">'Pre-stimulus alpha against entrainment strength (all trials pooled)'</span>)
+save_fig(gcf, <span class="string">'alpha_vs_entrainment_strength'</span>)
+
+<span class="comment">% The recall-accuracy figure that used to close this section depended on</span>
+<span class="comment">% RecallAcc, which the memory ANOVA produced, and is now drawn in MEGxBeh.Rmd</span>
+<span class="comment">% alongside the models it illustrates.</span>
+</pre>
+<h2 id="15">Continuous trial-level analyses</h2>
+<p>Moved to MEGxBeh.Rmd, for the same reason as the memory analysis above.</p>
+<p>The versions that used to sit here fitted a model per participant and then tested the coefficients across participants: Fisher-z transformed Spearman correlations for alpha against entrainment strength, and per-participant logistic slopes for alpha against memory. Both weight a participant with 20 usable trials the same as one with 90, and both drop any participant whose data will not support a fit at all, which for the logistic version means anyone whose trials in a condition were all remembered or all forgotten.</p>
+<p>The remaining sections of this script are the parts that genuinely need MATLAB: the sensor-space cluster test and the spatial diagnostics.</p>
+<pre class="codeinput">
+<span class="keyword">function</span> save_fig_png_safe(fig, filepath)
+<span class="comment">% Some plotting utilities (e.g. SPM's spm_eeg_plotScalpData) attach UI</span>
+<span class="comment">% components -- typically uicontrol objects such as sliders or buttons --</span>
+<span class="comment">% to their figures. MATLAB's classic print() function refuses to export</span>
+<span class="comment">% any figure containing these ("UI components are not supported. To</span>
+<span class="comment">% include UI components, use the 'exportapp' function"), even though the</span>
+<span class="comment">% plot itself is an ordinary static image and the UI elements serve no</span>
+<span class="comment">% purpose in a saved file, and this check applies regardless of output</span>
+<span class="comment">% format. They are removed here before printing, since a saved figure</span>
+<span class="comment">% can't be interactive anyway.</span>
+delete(findall(fig, <span class="string">'Type'</span>, <span class="string">'uicontrol'</span>));
+print(fig, filepath, <span class="string">'-dpng'</span>, <span class="string">'-r300'</span>);
+<span class="keyword">end</span>
+</pre>
+<pre class="codeoutput">Warning: Duplicate data points have been detected and removed - corresponding
+values have been averaged. 
+Warning: Duplicate data points have been detected and removed - corresponding
+values have been averaged. 
+</pre>
+<img vspace="5" hspace="5" src="AlphaAnalysis_01.png" alt=""> <img vspace="5" hspace="5" src="AlphaAnalysis_02.png" alt=""> <img vspace="5" hspace="5" src="AlphaAnalysis_03.png" alt=""> <img vspace="5" hspace="5" src="AlphaAnalysis_04.png" alt=""> <img vspace="5" hspace="5" src="AlphaAnalysis_05.png" alt=""> <img vspace="5" hspace="5" src="AlphaAnalysis_06.png" alt=""> <p class="footer">
+<br>
+<a href="https://www.mathworks.com/products/matlab/">Published with MATLAB&reg; R2025a</a>
+<br>
+</p>
+</div>
+<!--
+##### SOURCE BEGIN #####
+%% AlphaAnalysis.m
+% Pre-stimulus alpha analysis, following Wang et al. (2026, Communications
+% Psychology). Tests whether pre-stimulus alpha power differs before trials
+% whose actual visual-auditory phase difference matched their nominal
+% condition vs trials where it didn't, and whether alpha relates to
+% subsequent memory.
+%
+% Scope: implements the *memory* half of that analysis only. The tonic-alpha
+% (trial-order x match) control ANOVA and LCMV source localisation are not
+% implemented here.
+%
+% Run once per channel type (ChanType = 'MEGPLANAR', then 'MEGMAG'); outputs
+% are saved with the channel type in the filename so runs don't overwrite.
+%
+% Not circular: sensors are selected by a cluster test on the
+% mismatch-minus-match alpha contrast, and memory performance plays no part
+% in that selection. (Re-testing match/mismatch itself on those sensors
+% would be circular, and is deliberately not done here.)
+%
+% Requires Preprocessing.m and Analysis.m first. Reads Synchronicity.mat
+% from Analysis.m (per-trial phase lag, condition, entrainment strength).
+% Bad channels come from each subject's merged file, not a saved list, so
+% this works for any ChanType regardless of what Analysis.m used.
+%
+% Behavioural data (per-trial memory outcome) is an external dependency not
+% produced by this pipeline REPLACE_WITH_DASH_DASH see "Behavioural data" below.
+
+%% Setup
+% This duplicates TIMESetup.m rather than calling it, because the alpha
+% analysis uses a different set of parameters and can be run on its own. If
+% the paths or the subject list change, both files need updating.
+% Kept in sync with the Setup sections of Preprocessing.m and Analysis.m
+% REPLACE_WITH_DASH_DASH if you change one, change the others to match.
+
+close all hidden
+clear all
+
+% Random seed. The cluster permutation test's randomisations draw on
+% MATLAB's global random number generator; fixing the seed makes them
+% exactly reproducible across runs. `clear` does not reset the generator,
+% so this must be set explicitly rather than relied upon to start fresh.
+rngSeed = 42;
+rng(rngSeed, 'twister');
+
+% Small helper used when reporting scalp positions
+ternary_str = @(cond, a, b) subsref({b, a}, struct('type', '{}', 'subs', {{cond + 1}}));
+
+% Paths
+addpath '/imaging/henson/TIME/LatestMEGscripts'
+addpath /imaging/local/software/spm_toolbox/osl/osl-core
+addpath('/imaging/henson/TIME/MEG_scripts')
+
+osl_startup('/imaging/local/software/spm_toolbox/osl', 'shared')
+
+% Initialise SPM's M/EEG defaults without opening its GUI. `spm eeg`
+% launches the Menu, Interactive and Graphics windows, and publish()
+% captures every open figure, so those windows end up embedded in the HTML
+% output. spm('defaults', ...) configures exactly the same defaults with no
+% windows, and is safe to call repeatedly.
+spm('defaults', 'EEG');
+
+% Close any SPM windows that initialisation opened regardless, for the same
+% reason. SPM tags its windows, so they can be removed without touching the
+% figures this script creates itself.
+delete(findall(0, 'Type', 'figure', 'Tag', 'Menu'));
+delete(findall(0, 'Type', 'figure', 'Tag', 'Interactive'));
+delete(findall(0, 'Type', 'figure', 'Tag', 'Graphics'));
+
+outdir    = '/imaging/henson/TIME/meg-derivatives/';
+resultdir = '/imaging/henson/TIME/LatestMEGscripts/MEGxBehavioural';
+
+% Figures: saved as .png (raster, 300 dpi). Vector formats (EMF, SVG, PDF)
+% were all tried in turn REPLACE_WITH_DASH_DASH EMF is Windows-only and errors on this
+% platform; SVG and PDF both failed to render polarhistogram figures
+% correctly regardless of transparency settings, a MATLAB vector-export
+% limitation for that specific graphics object rather than something
+% fixable from this script. PNG is what has actually been confirmed to
+% render every figure correctly, so it is used for all of them rather
+% than keeping different paths for different figure types.
+figdir = '/imaging/henson/TIME/LatestMEGscripts/figures';
+if ~exist(figdir, 'dir'), mkdir(figdir); end
+save_fig = @(fig, name) save_fig_png_safe(fig, fullfile(figdir, [name '.png']));
+
+ChanType = 'MEGPLANAR';   % run once with this, then again with 'MEGMAG'. Wang et al.
+                          % tested gradiometers and magnetometers separately; outputs
+                          % below are saved with the channel type in the filename so
+                          % the two runs do not overwrite each other.
+Subs     = 1:32;
+transdef = '';
+
+PhaseConds    = {'SyncTheta', 'AsyncTheta'};
+ExpectedPhase = [0, pi];
+
+% Alpha analysis windows and band
+AlphaBand    = [8 12];         % Hz
+PreWin       = [-0.7 -0.2];    % pre-stimulus window, relative to stimulus onset (s)
+AlphaBaseWin = [3.2 3.7];      % post-stimulus baseline window (s). Deliberately
+                               % post-stimulus: normalising a pre-stimulus measure
+                               % by a pre-stimulus baseline would be circular. Sits
+                               % after the 3 s stimulus offset to avoid the offset
+                               % response.
+% Matched / mismatched classification. A trial is matched if its actual
+% phase difference falls within MatchedBound of the intended offset, and
+% mismatched if it is at least MismatchedBound away. With both bounds at
+% pi/2 the two groups partition every trial with no ambiguous band, a
+% +/- 90 deg split matching Wang et al. exactly (their code sorts trials
+% into two bins by phase difference: match = intended bin, mismatch =
+% everything else). Trials on the boundary go to matched (see the <= / >
+% in the classification below), keeping the groups mutually exclusive.
+%
+% A sharpened version was tried (MatchedBound = pi/4, MismatchedBound =
+% 3*pi/4), to discard the least certain labels REPLACE_WITH_DASH_DASH phase here comes from a
+% single maximum-weight sensor per modality, not a beamformed ROI, so the
+% labels are noisier than Wang et al.'s. It backfired: 47.6% of trials fell
+% in the ambiguous band and five subjects were left with 3-4 trials in one
+% group, whose per-subject means were near noise yet carried full weight in
+% the group test. At these trial counts the trade is not worth making. Set
+% MatchedBound = pi/4 and MismatchedBound = 3*pi/4 to reinstate it.
+MatchedBound    = pi/2;      % within 90 deg of the intended offset
+MismatchedBound = pi/2;      % everything else counts as mismatched
+
+% Cluster permutation settings
+nPermutations     = 1000;
+clusterAlpha      = 0.05;
+neighbourDist     = 40;        % millimetres. Sensor positions are converted to mm
+                               % below, so this must be in mm too. Adjacent MEGIN
+                               % planar gradiometer locations are about 34 mm apart,
+                               % so a value near 40 gives roughly 4 to 8 neighbours
+                               % per channel. Too small a value silently prevents any
+                               % cluster from forming.
+minNeighbourChans = 0;         % minimum neighbours a channel needs to join a cluster.
+                               % MNE, used by Wang et al., has no equivalent parameter,
+                               % so 0 matches their procedure; higher values are stricter.
+statTail          = 1;         % 1 = right-tailed, testing Wang et al.'s direction (alpha
+                               % higher before mismatched trials); -1 = left-tailed;
+                               % 0 = two-tailed. A one-tailed test finds nothing if the
+                               % effect runs the other way, so check the diagnostics
+                               % printed after the test before interpreting a null.
+
+% Subjects excluded from this analysis
+ExcludeSubs = [];              % sub-23 was excluded here while its MEG and
+                               % behavioural trials were misaligned. That arose
+                               % because its first run holds 16 trials rather
+                               % than 64, displacing everything after it by 48
+                               % rows. Analysis.m now derives the mapping from
+                               % the condition labels instead of assuming the
+                               % identity, so the subject is recoverable.
+
+% Memory analysis settings
+
+%% Load outputs from Analysis.m
+
+cd(resultdir)
+load('Synchronicity.mat',       'Sync_pSub')
+load('TrialMap.mat',            'TrialMap')   % MEG trial index to behavioural row
+if numel(TrialMap) ~= 32 || any(cellfun(@isempty, TrialMap))
+    error(['TrialMap covers %d subjects and %d entries are empty. Re-run ' ...
+           'Analysis.m to rebuild it.'], numel(TrialMap), sum(cellfun(@isempty, TrialMap)));
+end
+
+if ~ismember('Condition', Sync_pSub.Properties.VariableNames)
+    error(['Sync_pSub has no Condition column. Re-run the phase-lag section of ' ...
+           'Analysis.m, which now adds Condition and EntrainStrength.']);
+end
+
+% Drop excluded subjects. SubFileIdx records each retained subject's
+% original position, which the behavioural section needs to pick the right
+% file.
+SubFileIdx = find(~ismember(Subs, ExcludeSubs));
+Subs       = Subs(~ismember(Subs, ExcludeSubs));
+Sync_pSub  = Sync_pSub(~ismember(Sync_pSub.ParticipantID, ExcludeSubs), :);
+
+if ~isempty(ExcludeSubs)
+    fprintf('Excluded subjects: %s. Analysing %d subjects.\n', ...
+        mat2str(ExcludeSubs), length(Subs));
+end
+
+%% Channel set, neighbours, and interpolation weights
+% Cluster-based permutation testing across subjects requires an identical
+% channel set for everyone, but each subject has a different set of
+% channels flagged bad by OSL. Rather than restricting the analysis to
+% channels good in every subject REPLACE_WITH_DASH_DASH which discards sensors wholesale
+% because of a handful of participants REPLACE_WITH_DASH_DASH each subject's bad channels are
+% interpolated from their good neighbours, so every subject contributes the
+% full gradiometer array.
+%
+% Interpolation uses a distance-weighted average over the neighbours
+% defined below, equivalent to ft_channelrepair's 'weighted' method. It is
+% applied to the time series, before any filtering, because interpolation
+% is a linear spatial operation and interpolating power or amplitude
+% instead would not be equivalent.
+%
+% Note the data are already tSSS-MaxFiltered, which reconstructs channels
+% flagged at that stage from the SSS basis and reduces the spatial rank to
+% roughly 70. The channels interpolated here are the additional ones OSL
+% flagged afterwards. Interpolated channels are therefore not independent
+% of their neighbours REPLACE_WITH_DASH_DASH but neither are any of the channels after SSS, and
+% the cluster test's spatial correction already assumes strong spatial
+% correlation.
+
+Dref          = spm_eeg_load(fullfile(outdir, 'sub-30/meg/esub-30_task-loc_meg_proc-sss.mat'));
+AnalysisChans = Dref.chanlabels(indchantype(Dref, ChanType));
+AnalysisChans = AnalysisChans(:)';
+nChan         = numel(AnalysisChans);
+
+% Sensor neighbours. SPM returns sensor positions in whatever units the
+% file carries, which for MEGIN data is millimetres, so the distance
+% threshold has to be in the same units. Converting explicitly removes the
+% ambiguity: a mismatch here does not raise an error, it just yields almost
+% no neighbours (each planar gradiometer finding only the partner mounted
+% at the same location), and with too few neighbours no cluster can form
+% however strong the underlying effect.
+grad = ft_convert_units(Dref.sensors('MEG'), 'mm');
+
+cfg               = [];
+cfg.method        = 'distance';
+cfg.neighbourdist = neighbourDist;
+cfg.grad          = grad;
+cfg.channel       = AnalysisChans;
+neighbours        = ft_prepare_neighbours(cfg);
+
+meanNeighbours = mean(cellfun(@numel, {neighbours.neighblabel}));
+fprintf('Analysed channels: %d. Average neighbours per channel: %.1f\n', ...
+    nChan, meanNeighbours);
+if meanNeighbours < 3
+    warning(['Only %.1f neighbours per channel, which is too few for clustering ' ...
+             '(a healthy MEGIN planar layout gives roughly 4 to 8). Check ' ...
+             'neighbourDist against the units of grad, and inspect the result ' ...
+             'with ft_neighbourplot(struct(''neighbours'', neighbours), grad).'], ...
+             meanNeighbours);
+end
+
+% Channel positions, ordered to match AnalysisChans
+[inGrad, gradIdx] = ismember(AnalysisChans, grad.label);
+if ~all(inGrad)
+    error('%d analysed channels are absent from the sensor description.', sum(~inGrad));
+end
+chanPos = grad.chanpos(gradIdx, :);
+
+% One interpolation matrix per subject: identity for good channels, and a
+% distance-weighted average of good neighbours for bad ones. Bad channels
+% are read from each subject's own merged file, so this section is
+% independent of which ChanType Analysis.m was run with.
+InterpW        = cell(1, length(Subs));
+GoodChans_pSub = cell(1, length(Subs));
+nBadTotal      = 0;
+
+for iSub = 1:length(Subs)
+
+    Dsub = spm_eeg_load(fullfile(outdir, sprintf('sub-%02d', Subs(iSub)), 'meg', ...
+        sprintf('cesub-%02d_task-TIME_run-1_meg_proc-sss%s.mat', Subs(iSub), transdef)));
+    GoodChans_pSub{iSub} = Dsub.chanlabels(indchantype(Dsub, ChanType, 'GOOD'));
+
+    isGood = ismember(AnalysisChans, GoodChans_pSub{iSub});
+    badIdx = find(~isGood);
+    W      = eye(nChan);
+
+    for b = badIdx(:)'
+        nbEntry = neighbours(strcmp({neighbours.label}, AnalysisChans{b}));
+        if isempty(nbEntry)
+            warning('Channel %s has no entry in the neighbour structure; left uninterpolated.', ...
+                AnalysisChans{b});
+            continue
+        end
+
+        [inSet, nbIdx] = ismember(nbEntry.neighblabel, AnalysisChans);
+        nbIdx = nbIdx(inSet);
+        nbIdx = nbIdx(isGood(nbIdx));        % interpolate from good neighbours only
+
+        if isempty(nbIdx)
+            warning(['Subject %d: channel %s has no good neighbours and was left ' ...
+                     'uninterpolated. Its values remain those of a channel flagged ' ...
+                     'bad.'], Subs(iSub), AnalysisChans{b});
+            continue
+        end
+
+        dist = sqrt(sum((chanPos(nbIdx, :) - chanPos(b, :)).^2, 2));
+        w    = 1 ./ max(dist, eps);
+        w    = w / sum(w);
+
+        W(b, :)     = 0;
+        W(b, nbIdx) = w;
+    end
+
+    InterpW{iSub} = W;
+    nBadTotal     = nBadTotal + numel(badIdx);
+end
+
+fprintf('Interpolated %d bad channels across %d subjects (mean %.1f per subject).\n', ...
+    nBadTotal, length(Subs), nBadTotal / length(Subs));
+
+%% Matched / mismatched trial labels
+% A trial is "matched" if its actual visual-auditory phase difference fell
+% within MatchedBound of the phase offset its condition intended (0 deg for
+% SyncTheta, 180 deg for AsyncTheta), and "mismatched" if it fell at least
+% MismatchedBound away. Trials between the two bounds are ambiguous and
+% excluded from the contrast, since with a single-sensor phase estimate
+% their classification is the least reliable. Only the two theta conditions
+% are analysed: NoFlicker and SyncDelta have no defined 4 Hz phase
+% relationship, so the distinction does not apply to them.
+%
+% Note this centres the bins on exactly 0 and 180 deg, as in Wang et al.
+% Check meanLagDeg from Analysis.m first: if there is a systematic offset
+% (from conduction delays or the audio-visual lag), centring the bins on
+% the observed mean instead may be more appropriate, and should be a
+% deliberate choice rather than a default.
+
+expectedByTrial = nan(height(Sync_pSub), 1);
+for iCond = 1:length(PhaseConds)
+    expectedByTrial(strcmp(Sync_pSub.Condition, PhaseConds{iCond})) = ExpectedPhase(iCond);
+end
+
+% Wrapped angular distance between the observed and expected phase offset
+angDist = abs(angle(exp(1i * (Sync_pSub.Synchronicity - expectedByTrial))));
+
+% The second condition on Mismatched keeps the two groups mutually exclusive
+% when the bounds coincide, as they do by default; without it a trial sitting
+% exactly on the boundary would be counted in both.
+Sync_pSub.Matched    = angDist <= MatchedBound;
+Sync_pSub.Mismatched = angDist >= MismatchedBound & ~Sync_pSub.Matched;
+Sync_pSub.Ambiguous  = ~Sync_pSub.Matched & ~Sync_pSub.Mismatched;
+
+fprintf('Matched: %d (%.1f%%)  Mismatched: %d (%.1f%%)  Ambiguous, excluded: %d (%.1f%%)  of %d\n', ...
+    sum(Sync_pSub.Matched),    100 * mean(Sync_pSub.Matched), ...
+    sum(Sync_pSub.Mismatched), 100 * mean(Sync_pSub.Mismatched), ...
+    sum(Sync_pSub.Ambiguous),  100 * mean(Sync_pSub.Ambiguous), height(Sync_pSub));
+
+% Warn if sharpening has left too few trials in any subject to estimate a
+% stable per-subject mean for either group.
+minTrialsPerGroup = 10;
+for iSub = 1:length(Subs)
+    subRows = Sync_pSub.ParticipantID == Subs(iSub);
+    nM  = sum(Sync_pSub.Matched(subRows));
+    nMM = sum(Sync_pSub.Mismatched(subRows));
+    if min(nM, nMM) < minTrialsPerGroup
+        warning('Subject %d: only %d matched and %d mismatched trials after sharpening.', ...
+            Subs(iSub), nM, nMM);
+    end
+end
+
+%% Pre-stimulus alpha power, per channel, per trial
+% Alpha is not covered by the frequency vector used in Analysis.m (which
+% stops at 8 Hz), so it is computed here. A bandpass filter plus Hilbert
+% transform is used, matching the approach taken in the phase-lag section
+% of Analysis.m. Power is retained per channel (rather than
+% channel-averaged as in TF_pSub) because the cluster test operates over
+% sensors.
+%
+% Only two summary values per channel per trial are stored REPLACE_WITH_DASH_DASH the mean
+% amplitude in the pre-stimulus window and in the baseline window REPLACE_WITH_DASH_DASH so
+% the full time courses never need to be held in memory.
+
+AlphaPre_pSub    = cell(1, length(Subs));   % channel x trial, pre-stimulus window
+AlphaBase_pSub   = cell(1, length(Subs));   % channel x trial, baseline window
+TrialInds_pSub   = cell(1, length(Subs));   % trial indices these columns correspond to
+AlphaDiffTC_pSub = cell(1, length(Subs));   % channel x time, mismatch-minus-match, pre-stimulus window only
+preTimes         = [];                      % actual time (s) of each preIdx sample, set inside the loop
+
+for iSub = 1:length(Subs)
+
+    fprintf('Alpha power: subject %d of %d\n', iSub, length(Subs));
+
+    sub_nam = sprintf('sub-%02d', Subs(iSub));
+    sub_in  = fullfile(outdir, sub_nam, 'meg');
+    cd(sub_in)
+
+    D = spm_eeg_load(sprintf('cesub-%02d_task-TIME_run-1_meg_proc-sss%s.mat', Subs(iSub), transdef));
+
+    % Index the common channels in this subject's own channel ordering
+    [~, chanInds] = ismember(AnalysisChans, D.chanlabels);
+    if any(chanInds == 0)
+        error('Subject %s is missing one or more common channels.', sub_nam);
+    end
+
+    % Only the trials that appear in Sync_pSub for this subject, so that
+    % alpha and the phase-lag measures index the same trials
+    TrialInds = Sync_pSub.TrialNum(Sync_pSub.ParticipantID == Subs(iSub));
+    TrialInds_pSub{iSub} = TrialInds;
+
+    % Matched/Mismatched status for these same trials, in the same order,
+    % reused from Sync_pSub exactly as the per-subject sensor averages
+    % section below does, so the two stay consistent.
+    subRows    = Sync_pSub.ParticipantID == Subs(iSub);
+    matched    = Sync_pSub.Matched(subRows);
+    mismatched = Sync_pSub.Mismatched(subRows);
+
+    preIdx  = (indsample(D, PreWin(1))       + 1):indsample(D, PreWin(2));
+    baseIdx = (indsample(D, AlphaBaseWin(1)) + 1):indsample(D, AlphaBaseWin(2));
+    preTimes = time(D);
+    preTimes = preTimes(preIdx);
+
+    AlphaPre  = nan(length(chanInds), length(TrialInds));
+    AlphaBase = nan(length(chanInds), length(TrialInds));
+
+    % Raw alpha-amplitude time course in the pre-stimulus window, per trial.
+    % Kept only for the current subject and reduced to the mismatch-minus-match
+    % difference below before moving on, so the full per-trial array is never
+    % held for more than one subject. The baseline correction is applied after
+    % the loop, once the per-condition baselines are known, rather than
+    % per-trial (see below).
+    preAmp = nan(length(chanInds), numel(preIdx), length(TrialInds));
+
+    for iTrial = 1:length(TrialInds)
+        dat = squeeze(D(chanInds, :, TrialInds(iTrial)));   % channel x time
+        dat = InterpW{iSub} * dat;                          % interpolate this subject's bad channels
+        fdat = ft_preproc_bandpassfilter(dat, D.fsample, AlphaBand, 4, 'but', 'twopass', 'reduce', 'hann');
+        amp  = abs(hilbert(fdat'))';                        % hilbert works down columns, so transpose in and out
+
+        AlphaPre(:, iTrial)  = mean(amp(:, preIdx),  2);
+        AlphaBase(:, iTrial) = mean(amp(:, baseIdx), 2);
+        preAmp(:, :, iTrial) = amp(:, preIdx);
+    end
+
+    AlphaPre_pSub{iSub}  = AlphaPre;
+    AlphaBase_pSub{iSub} = AlphaBase;
+
+    % Mismatch-minus-match difference time course for the spatio-temporal
+    % cluster test, normalised by the per-condition mean baseline power (Wang
+    % et al.): a single baseline per condition, not one per trial. This is the
+    % same normalisation as the scalar AlphaDiff below REPLACE_WITH_DASH_DASH applied at every
+    % sample instead of to the window mean REPLACE_WITH_DASH_DASH so the two agree once
+    % time-averaged.
+    baseMatched    = mean(AlphaBase(:, matched),    2);
+    baseMismatched = mean(AlphaBase(:, mismatched), 2);
+    tcMatched      = mean((preAmp(:, :, matched)    - baseMatched)    ./ baseMatched,    3);
+    tcMismatched   = mean((preAmp(:, :, mismatched) - baseMismatched) ./ baseMismatched, 3);
+    AlphaDiffTC_pSub{iSub} = tcMismatched - tcMatched;
+    clear preAmp
+end
+
+cd(resultdir)
+save(sprintf('AlphaPower_pSub_%s.mat', ChanType), 'AlphaPre_pSub', 'AlphaBase_pSub', 'TrialInds_pSub', 'AnalysisChans')
+
+%% Per-subject sensor averages for the cluster test
+% Baseline correction follows Wang et al.: pre-stimulus alpha is expressed
+% relative to the mean baseline-window power across trials, computed
+% separately within the matched and mismatched trials of each subject.
+% The contrast taken forward is mismatch minus match, so that a positive
+% value means alpha was higher before mismatched trials (equivalently,
+% lower before matched ones).
+
+AlphaDiff = nan(length(Subs), numel(AnalysisChans));   % subject x channel
+
+for iSub = 1:length(Subs)
+
+    subRows    = Sync_pSub.ParticipantID == Subs(iSub);
+    matched    = Sync_pSub.Matched(subRows);
+    mismatched = Sync_pSub.Mismatched(subRows);
+
+    AlphaPre  = AlphaPre_pSub{iSub};
+    AlphaBase = AlphaBase_pSub{iSub};
+
+    baseMatched    = mean(AlphaBase(:, matched),    2);
+    baseMismatched = mean(AlphaBase(:, mismatched), 2);
+
+    normMatched    = mean((AlphaPre(:, matched)    - baseMatched)    ./ baseMatched,    2);
+    normMismatched = mean((AlphaPre(:, mismatched) - baseMismatched) ./ baseMismatched, 2);
+
+    AlphaDiff(iSub, :) = (normMismatched - normMatched)';
+end
+
+%% Cluster-based permutation test
+% One-sample test across subjects of whether the mismatch-minus-match
+% alpha difference exceeds zero, right-tailed, corrected by cluster-based
+% permutation over channels AND time jointly (multiple samples within the
+% -0.7 to -0.2 s window, not a single pre-averaged value per channel).
+% This matches Wang et al.'s actual method (their
+% multimodal_sensor_alpha_SME.py uses mne.stats.spatio_temporal_cluster_
+% 1samp_test with sensor adjacency combined with the time dimension via
+% mne.stats.combine_adjacency), which their paper does not describe in
+% this level of detail. FieldTrip does not need a separate option to
+% enable the temporal half of this: once cfg.neighbours is set and the
+% data carry more than one time sample, ft_timelockstatistics clusters
+% over adjacent time points automatically, the same as adjacent channels.
+% This defines the sensor set used by the memory analysis below.
+
+% Neighbours and the analysed channel set were built in the channel-set
+% section above, and are reused here.
+
+dataDiff = cell(1, length(Subs));
+dataZero = cell(1, length(Subs));
+for iSub = 1:length(Subs)
+    tl             = [];
+    tl.label       = AnalysisChans(:);
+    tl.time        = preTimes;
+    tl.dimord      = 'chan_time';
+    tl.avg         = AlphaDiffTC_pSub{iSub};
+    dataDiff{iSub} = tl;
+
+    tl.avg         = zeros(size(AlphaDiffTC_pSub{iSub}));
+    dataZero{iSub} = tl;
+end
+
+cfg                  = [];
+cfg.method           = 'montecarlo';
+cfg.statistic        = 'ft_statfun_depsamplesT';
+cfg.correctm         = 'cluster';
+cfg.clusteralpha     = clusterAlpha;
+cfg.clusterstatistic = 'maxsum';
+cfg.minnbchan        = minNeighbourChans;
+cfg.neighbours       = neighbours;
+cfg.tail             = statTail;
+cfg.clustertail      = statTail;
+if statTail == 0
+    cfg.correcttail = 'prob';   % required for a two-tailed cluster test
+end
+cfg.alpha            = clusterAlpha;
+cfg.numrandomization = nPermutations;
+cfg.channel          = AnalysisChans;
+
+nSub        = length(Subs);
+cfg.design  = [1:nSub, 1:nSub; ones(1, nSub), 2 * ones(1, nSub)];
+cfg.uvar    = 1;   % unit of observation: subject
+cfg.ivar    = 2;   % independent variable: difference vs zero
+
+stat = ft_timelockstatistics(cfg, dataDiff{:}, dataZero{:});
+
+% Everything below indexes stat.mask and stat.stat positionally against
+% AnalysisChans (e.g. AnalysisChans(clusterChanMask), and passing statChanMax
+% to spm_eeg_plotScalpData with AnalysisChans). That is only valid if FieldTrip
+% returned the channels in the same order they went in. It does, but a silent
+% reordering would attach the effect to the wrong sensors and carry that error
+% into the exported memory table, so it is checked rather than assumed.
+assert(isequal(stat.label(:), AnalysisChans(:)), ...
+    ['ft_timelockstatistics returned channels in a different order to ' ...
+     'AnalysisChans; reorder stat.stat/stat.mask to AnalysisChans before the ' ...
+     'positional indexing below.']);
+
+% stat.mask and stat.stat are now channel x time (multiple samples within
+% the pre-stimulus window), not channel x 1 as they were with a single
+% pre-averaged time point. A channel counts as part of the cluster if any
+% of its time samples are, and per-channel summaries below use the
+% strongest (most positive) time sample for that channel, since that is
+% the one driving cluster membership.
+clusterChanMask = any(stat.mask, 2);
+ClusterChans    = AnalysisChans(clusterChanMask);
+statChanMax      = max(stat.stat, [], 2);   % one value per channel, for summaries/plots below
+
+% Distribution of the observed statistic. This distinguishes an absent
+% effect from one running in the opposite direction to the test, which a
+% one-tailed test cannot detect. Chance alone would put roughly 5% of
+% channels beyond the one-tailed threshold, so finding far
+% fewer in the tested direction (and many in the other) indicates the
+% effect is reversed rather than missing.
+tThresh = tinv(1 - clusterAlpha, length(Subs) - 1);
+fprintf('\nREPLACE_WITH_DASH_DASH- Statistic summary REPLACE_WITH_DASH_DASH-\n');
+fprintf('Cluster-forming |t| threshold (df = %d): %.3f\n', length(Subs) - 1, tThresh);
+fprintf('t (per channel, strongest time sample): min %.2f, max %.2f, mean %.2f\n', ...
+    min(statChanMax), max(statChanMax), mean(statChanMax));
+fprintf('Channels with t > +%.2f at their strongest sample: %d    t < -%.2f: %d    (of %d)\n', ...
+    tThresh, sum(statChanMax >  tThresh), ...
+    tThresh, sum(min(stat.stat, [], 2) < -tThresh), numel(statChanMax));
+fprintf('Mean alpha difference (mismatch - match) over channels and subjects: %.4f\n', ...
+    mean(AlphaDiff(:)));
+fprintf('Subjects with a positive mean difference: %d of %d\n', ...
+    sum(mean(AlphaDiff, 2) > 0), length(Subs));
+
+% Report every cluster that formed, in both directions, not only the
+% surviving ones. A cluster at p just above threshold means something quite
+% different from no cluster forming at all, and that distinction is
+% invisible from stat.mask alone.
+if isfield(stat, 'posclusters') && ~isempty(stat.posclusters)
+    fprintf('Positive clusters: %d, p-values: %s\n', ...
+        numel(stat.posclusters), mat2str(round([stat.posclusters.prob], 4)));
+else
+    fprintf('No positive clusters formed at the cluster-forming threshold.\n');
+end
+if isfield(stat, 'negclusters') && ~isempty(stat.negclusters)
+    fprintf('Negative clusters: %d, p-values: %s\n', ...
+        numel(stat.negclusters), mat2str(round([stat.negclusters.prob], 4)));
+else
+    fprintf('No negative clusters formed at the cluster-forming threshold.\n');
+end
+
+fprintf('Sensors in significant cluster: %d\n', numel(ClusterChans));
+
+% REPLACE_WITH_DASH_DASH- Where the effect sits on the scalp REPLACE_WITH_DASH_DASH-
+% Reported whether or not a cluster survives, so the spatial pattern can be
+% compared with the topography Wang et al. report even when the statistics
+% fall short. Their gradiometer cluster covered 61 sensors and localised to
+% left posterior parietal cortex (MNI -24, -75, 14), so a comparable effect
+% here should concentrate over left posterior sensors.
+%
+% Positions come from the 2D sensor layout, in which the first row runs left
+% to right and the second front to back. The centroid of the suprathreshold
+% channels, and how it compares with the centroid of the whole array, says
+% which part of the array carries the effect without needing a cluster.
+supra = statChanMax > tThresh;
+if any(supra)
+    [~, layIdx] = ismember(AnalysisChans, Dref.chanlabels);
+    XYall2 = Dref.coor2D;
+    XYlay  = XYall2(:, layIdx);
+
+    cSup = mean(XYlay(:, supra), 2);
+    cAll = mean(XYlay, 2);
+
+    fprintf('\nSuprathreshold channels (t > %.2f): %d of %d\n', tThresh, sum(supra), numel(supra));
+    fprintf('  layout centroid: left-right %.3f, front-back %.3f (array centre %.3f, %.3f)\n', ...
+        cSup(1), cSup(2), cAll(1), cAll(2));
+    fprintf('  relative to the array centre: %s, %s\n', ...
+        ternary_str(cSup(1) < cAll(1), 'leftward', 'rightward'), ...
+        ternary_str(cSup(2) < cAll(2), 'posterior', 'anterior'));
+    fprintf('  channels: %s\n', strjoin(AnalysisChans(supra), ' '));
+
+    % Same, weighted by t, so the strongest channels count for more
+    w = statChanMax; w(~supra) = 0; w = w / sum(w);
+    cW = XYlay * w;
+    fprintf('  t-weighted centroid: left-right %.3f, front-back %.3f\n', cW(1), cW(2));
+
+    % Verify the layout convention before trusting those direction labels.
+    % The code assumes higher values on the first row mean rightward and on
+    % the second row mean anterior, which is the usual topoplot convention,
+    % but a flip on either axis would invert the conclusion. Printing the
+    % channels at the four extremes makes this checkable against any standard
+    % Neuromag layout figure: the channel reported as most anterior should be
+    % a frontal one, and the one reported as leftmost should be over the left
+    % hemisphere.
+    [~, iL] = min(XYlay(1, :));  [~, iR] = max(XYlay(1, :));
+    [~, iP] = min(XYlay(2, :));  [~, iA] = max(XYlay(2, :));
+    fprintf(['  layout check REPLACE_WITH_DASH_DASH extreme channels: lowest left-right %s, highest %s; ' ...
+             'lowest front-back %s, highest %s\n'], ...
+        AnalysisChans{iL}, AnalysisChans{iR}, AnalysisChans{iP}, AnalysisChans{iA});
+    fprintf(['    (the direction labels above assume higher = rightward and higher = ' ...
+             'anterior; confirm against a Neuromag layout before relying on them)\n']);
+
+    % Ocular contamination check. Eye movements and blinks project most
+    % strongly onto anterior sensors, so an alpha effect whose topography is
+    % frontally weighted cannot be separated from ocular activity unless
+    % component-based artefact removal has been applied. This pipeline's
+    % preprocessing flags bad channels and trials but does not remove ocular
+    % components, and EOG is discarded at conversion, so no direct check is
+    % available. Wang et al. (2026) both ran ICA and compared fixation
+    % density between conditions for precisely this reason, and their effect
+    % was posterior.
+    if cSup(2) > cAll(2)
+        warning(['The suprathreshold channels sit anterior to the array centre. ' ...
+                 'Ocular activity projects most strongly onto anterior sensors, and ' ...
+                 'this pipeline performs no component-based removal of it, so an ' ...
+                 'anterior alpha difference cannot be distinguished from eye-movement ' ...
+                 'contamination. Note also that Wang et al. report a posterior, ' ...
+                 'left-lateralised effect, so an anterior one is not a weaker version ' ...
+                 'of their result. Treat it as uninterpretable until ICA is added or ' ...
+                 'an eye-movement control is run.']);
+    end
+end
+
+%% Sensor selection for the trial-level analyses
+% The cluster defines the sensors. If no cluster survived, the result is
+% a null: pre-stimulus alpha does not distinguish matched from mismatched
+% trials anywhere on the array at the tested threshold. There is no
+% fallback sensor set to substitute REPLACE_WITH_DASH_DASH picking one after the fact (e.g.
+% the channels with the highest raw alpha power, or all channels) would
+% not be a principled way to rescue a trial-level memory analysis from a
+% null spatial result. The topographies below are still shown regardless,
+% since they are diagnostic rather than a claim of an effect, but the
+% sensor-selection-dependent plots and the trial-level memory analyses
+% further down are skipped.
+
+SelectedChans = ClusterChans;
+SensorSource  = 'cluster-defined';
+stopBeforeSelectedSensorPlots = isempty(ClusterChans);
+
+if stopBeforeSelectedSensorPlots
+    fprintf(['\nConclusion: no significant cluster. Read the statistic summary above ' ...
+             'before treating this as a clean absence of an effect: t values centred ' ...
+             'near zero with few channels beyond threshold in either direction ' ...
+             'indicate a genuine null, whereas a preponderance of one sign indicates ' ...
+             'an effect the tested tail cannot detect. The topographies below are ' ...
+             'still shown; the sensor-selection-dependent plots and the trial-level ' ...
+             'memory analyses after them are skipped, since there is no sensor set to ' ...
+             'run them on.\n']);
+else
+    fprintf('\nSensor set for trial-level analyses: %s (%d channels)\n', ...
+        SensorSource, numel(SelectedChans));
+end
+
+cd(resultdir)
+save(sprintf('AlphaCluster_%s.mat', ChanType), 'stat', 'ClusterChans', 'SelectedChans', ...
+     'SensorSource', 'AlphaDiff', 'AnalysisChans')
+
+%% Per-trial alpha over the selected sensors
+% For the trial-level analyses, alpha is averaged over the cluster
+% sensors and expressed relative to a single per-subject baseline computed
+% across all analysed trials. A single baseline is used here (rather than
+% the condition-specific baselines used for the cluster test above)
+% because the memory analysis bins trials by alpha irrespective of whether
+% they matched their condition; using condition-specific baselines would
+% partly remove the very variance being examined.
+
+AlphaTrial = nan(height(Sync_pSub), 1);
+
+for iSub = 1:length(Subs)
+
+    subRows  = find(Sync_pSub.ParticipantID == Subs(iSub));
+    [~, cIdx] = ismember(SelectedChans, AnalysisChans);
+
+    AlphaPre  = AlphaPre_pSub{iSub}(cIdx, :);
+    AlphaBase = AlphaBase_pSub{iSub}(cIdx, :);
+
+    baseAll = mean(AlphaBase, 2);                                  % channel x 1
+    normPre = (AlphaPre - baseAll) ./ baseAll;                     % channel x trial
+
+    AlphaTrial(subRows) = mean(normPre, 1)';                       % average over cluster sensors
+end
+
+Sync_pSub.Alpha = AlphaTrial;
+
+% Trial order within each subject, for the first/second half split. Trial
+% index in the merged file tracks temporal order, since Preprocessing.m
+% concatenates runs 1 -> 2 -> 3 and trials within each run are in order.
+Sync_pSub.TrialOrder = nan(height(Sync_pSub), 1);
+for iSub = 1:length(Subs)
+    subRows = find(Sync_pSub.ParticipantID == Subs(iSub));
+    [~, ord] = sort(Sync_pSub.TrialNum(subRows));
+    rank = nan(size(ord));
+    rank(ord) = 1:length(ord);
+    Sync_pSub.TrialOrder(subRows) = rank;
+end
+
+
+%% Behavioural data
+% Reads the per-trial memory outcome, and the stimulus (clip) identity, from
+% the same per-subject behavioural CSVs used by the combining section of
+% Analysis.m. Each file holds one row per encoding trial in merged-MEG-file
+% order, so TrialNum indexes directly into its rows.
+%
+% Set MemoryVar and ClipVar below to whichever columns in those files hold
+% the subsequent-memory outcome (1 = recalled, 0 = forgotten) and the
+% stimulus identity. The script lists the available column names if either
+% is not found. ClipID supports a by-clip random intercept in the R models
+% downstream, alongside the by-participant one.
+
+BehDir    = '/imaging/henson/TIME/BehavioralAnalysisScripts/CombinedMemoryData';
+MemoryVar = 'Accuracy';   % subsequent-memory outcome, 1 = recalled, 0 = forgotten
+ClipVar   = 'ClipID';     % stimulus identity, for a by-clip random intercept in R
+
+d = dir(fullfile(BehDir, '*.csv'));
+
+% Files are mapped to subjects by their position in this listing, which
+% corresponds to the original (pre-exclusion) subject numbering, so
+% SubFileIdx is used rather than the loop counter.
+if length(d) < max(SubFileIdx)
+    error(['Found %d behavioural files, but subject %d requires file %d. ' ...
+           'The file listing does not cover all analysed subjects.'], ...
+           length(d), Subs(end), max(SubFileIdx));
+end
+
+Sync_pSub.Remembered = nan(height(Sync_pSub), 1);
+Sync_pSub.ClipID     = repmat({''}, height(Sync_pSub), 1);
+
+for iSub = 1:length(Subs)
+
+    Sub_Data = readtable(fullfile(BehDir, d(SubFileIdx(iSub)).name));
+
+    if ~ismember(MemoryVar, Sub_Data.Properties.VariableNames)
+        error(['Column "%s" not found in %s. Available columns are:\n  %s\n' ...
+               'Set MemoryVar to the correct one.'], ...
+               MemoryVar, d(SubFileIdx(iSub)).name, strjoin(Sub_Data.Properties.VariableNames, ', '));
+    end
+    if ~ismember(ClipVar, Sub_Data.Properties.VariableNames)
+        error(['Column "%s" not found in %s. Available columns are:\n  %s\n' ...
+               'Set ClipVar to the correct one.'], ...
+               ClipVar, d(SubFileIdx(iSub)).name, strjoin(Sub_Data.Properties.VariableNames, ', '));
+    end
+
+    subRows = find(Sync_pSub.ParticipantID == Subs(iSub));
+    trialNo = TrialMap{SubFileIdx(iSub)}(Sync_pSub.TrialNum(subRows))';
+
+    if any(trialNo > height(Sub_Data))
+        error(['Subject %d: an MEG trial index (%d) exceeds the number of ' ...
+               'behavioural trials (%d). MEG and behavioural trials are ' ...
+               'misaligned.'], Subs(iSub), max(trialNo), height(Sub_Data));
+    end
+
+    % Alignment check. Every trial in Sync_pSub is a theta-condition trial,
+    % so the behavioural file's condition label at the corresponding row
+    % must agree. Disagreement means the row-index mapping is wrong for this
+    % subject and its memory outcomes would be attached to the wrong trials.
+    if ismember('Condition', Sub_Data.Properties.VariableNames)
+        nDisagree = sum(~strcmp(Sub_Data.Condition(trialNo), Sync_pSub.Condition(subRows)));
+        if nDisagree > 0
+            error(['Subject %d (%s): MEG and behavioural condition labels disagree on ' ...
+                   '%d of %d trials, so its memory outcomes would be attached to the ' ...
+                   'wrong trials. TrialMap was verified in Analysis.m against these ' ...
+                   'same labels, so reaching this point means TrialMap.mat is stale ' ...
+                   'relative to Synchronicity.mat; re-run Analysis.m.'], ...
+                   Subs(iSub), d(SubFileIdx(iSub)).name, nDisagree, length(trialNo));
+        end
+    end
+
+    Sync_pSub.Remembered(subRows) = Sub_Data.(MemoryVar)(trialNo);
+
+    % ClipID may come through as numeric, string, or categorical depending
+    % on how the behavioural file stores it; converted to a cell array of
+    % char here so the merged column has one consistent type regardless,
+    % since Sync_pSub.ClipID above was initialised as a cell array.
+    clipVals = Sub_Data.(ClipVar)(trialNo);
+    if isnumeric(clipVals)
+        clipVals = cellstr(num2str(clipVals));
+    elseif iscategorical(clipVals)
+        clipVals = cellstr(clipVals);
+    elseif ~iscell(clipVals)
+        clipVals = cellstr(string(clipVals));
+    end
+    Sync_pSub.ClipID(subRows) = clipVals;
+end
+
+
+
+fprintf('Trials with a memory outcome: %d of %d\n', ...
+    sum(~isnan(Sync_pSub.Remembered)), height(Sync_pSub));
+
+%% Export trial-level table
+% One row per trial, for mixed-effects modelling in R alongside the other
+% trial-level measures produced by Analysis.m.
+
+cd(resultdir)
+writetable(Sync_pSub, sprintf('AlphaTrialLevel_%s.csv', ChanType))
+save(sprintf('AlphaTrialLevel_%s.mat', ChanType), 'Sync_pSub')
+
+
+
+
+
+
+%% Diagnostic plots
+% Checks on the steps above, before any result is interpreted. None of
+% this feeds back into the saved outputs.
+
+% Sensor 2D layout for the analysed channels. Dref was loaded in the
+% channel-set section above.
+% coor2D is a meeg method, not a stored array, so it must be called and
+% assigned before being indexed. Writing Dref.coor2D(:, refIdx) directly
+% is parsed as a three-argument call and hits the setter instead, which
+% fails with "Index in position 1 exceeds array bounds".
+[~, refIdx] = ismember(AnalysisChans, Dref.chanlabels);
+if any(refIdx == 0)
+    error('%d analysed channels are absent from the layout reference file.', ...
+           sum(refIdx == 0));
+end
+XYall       = Dref.coor2D;
+XYplot      = XYall(:, refIdx);
+in          = [];
+in.chantype = ChanType;
+
+% REPLACE_WITH_DASH_DASH- Phase-lag distributions with the matched/mismatched boundaries REPLACE_WITH_DASH_DASH-
+% Shows how the +/- 90 deg split falls relative to the actual data. If the
+% distribution is centred well away from the expected phase, centring the
+% bins on the observed mean instead should be considered.
+for iCond = 1:length(PhaseConds)
+    figure
+    condLag = Sync_pSub.Synchronicity(strcmp(Sync_pSub.Condition, PhaseConds{iCond}));
+    polarhistogram(condLag, 36);
+    hold on
+    rl = rlim;
+    polarplot([ExpectedPhase(iCond) ExpectedPhase(iCond)], [0 rl(2)], '-k', 'LineWidth', 2);
+    for bnd = ExpectedPhase(iCond) + [-MatchedBound MatchedBound]
+        polarplot([bnd bnd], [0 rl(2)], 'REPLACE_WITH_DASH_DASHr', 'LineWidth', 1.5);
+    end
+    for bnd = ExpectedPhase(iCond) + [-MismatchedBound MismatchedBound]
+        polarplot([bnd bnd], [0 rl(2)], 'REPLACE_WITH_DASH_DASHm', 'LineWidth', 1.5);
+    end
+    obsMean = angle(mean(exp(1i * condLag)));
+    polarplot([obsMean obsMean], [0 rl(2)], 'REPLACE_WITH_DASH_DASHb', 'LineWidth', 1.5);
+    title(sprintf(['%s: expected (black), matched edge (red), mismatched edge ' ...
+        '(magenta), observed mean (blue) = %.1f%c'], ...
+        PhaseConds{iCond}, obsMean * 180 / pi, char(176)))
+    save_fig(gcf, sprintf('alpha_phaselag_bounds_%s', lower(PhaseConds{iCond})))
+end
+
+% REPLACE_WITH_DASH_DASH- Proportion of matched trials per subject REPLACE_WITH_DASH_DASH-
+% Wang et al. found roughly half of trials failed to match their intended
+% phase offset. A subject near 0 or 1 indicates something has gone wrong
+% with their phase estimate rather than genuine trial-by-trial variability.
+matchProp = arrayfun(@(s) sum(Sync_pSub.Matched(Sync_pSub.ParticipantID == s)) / ...
+    max(sum(Sync_pSub.Matched(Sync_pSub.ParticipantID == s)) + ...
+        sum(Sync_pSub.Mismatched(Sync_pSub.ParticipantID == s)), 1), Subs);
+figure
+bar(Subs, matchProp)
+hold on
+yline(0.5, 'REPLACE_WITH_DASH_DASHk', 'LineWidth', 1.5);
+xlabel('Subject'); ylabel('Proportion of matched trials')
+title('Matched share of classified (non-ambiguous) trials'); ylim([0 1])
+save_fig(gcf, 'alpha_matched_proportion_persub')
+
+% REPLACE_WITH_DASH_DASH- Trials per subject entering the analysis REPLACE_WITH_DASH_DASH-
+nMatched    = arrayfun(@(s) sum(Sync_pSub.Matched(Sync_pSub.ParticipantID == s)),    Subs);
+nMismatched = arrayfun(@(s) sum(Sync_pSub.Mismatched(Sync_pSub.ParticipantID == s)), Subs);
+nAmbiguous  = arrayfun(@(s) sum(Sync_pSub.Ambiguous(Sync_pSub.ParticipantID == s)),  Subs);
+figure
+bar(Subs, [nMatched(:) nMismatched(:) nAmbiguous(:)], 'stacked')
+legend({'Matched', 'Mismatched', 'Ambiguous (excluded)'}, 'Location', 'best')
+xlabel('Subject'); ylabel('Trials')
+title('Trial counts entering the alpha contrast')
+save_fig(gcf, 'alpha_trial_counts_persub')
+
+% REPLACE_WITH_DASH_DASH- Topography of the mismatch-minus-match alpha difference REPLACE_WITH_DASH_DASH-
+figure; in.f = gcf().Number;
+[~, ~] = spm_eeg_plotScalpData(mean(AlphaDiff, 1)', XYplot, AnalysisChans, in);
+title('Pre-stimulus alpha: mismatch minus match')
+save_fig(gcf, 'alpha_topo_mismatch_minus_match')
+
+% REPLACE_WITH_DASH_DASH- Uncorrected t-statistics REPLACE_WITH_DASH_DASH-
+% Shown regardless of whether a cluster survived correction. If a plausible
+% spatial pattern is visible here but no cluster formed, the problem is
+% likelier to be the clustering setup (neighbour count, cluster-forming
+% threshold) than an absent effect.
+figure; in.f = gcf().Number;
+[~, ~] = spm_eeg_plotScalpData(statChanMax, XYplot, AnalysisChans, in);
+title('Pre-stimulus alpha: uncorrected t-statistics (mismatch minus match, strongest time sample per channel)')
+save_fig(gcf, 'alpha_topo_tstat_uncorrected')
+
+% Topographies above are shown regardless of the cluster result. Everything
+% from here on needs an actual sensor selection, which does not exist when
+% no cluster survived (see "Sensor selection for the trial-level analyses"
+% above) REPLACE_WITH_DASH_DASH stop here in that case rather than plotting an empty selection
+% or continuing into a trial-level analysis with no sensors to run it on.
+if stopBeforeSelectedSensorPlots
+    return
+end
+
+% REPLACE_WITH_DASH_DASH- Selected sensors REPLACE_WITH_DASH_DASH-
+figure; hold on
+plot(XYplot(1, :), XYplot(2, :), 'o', 'MarkerSize', 8)
+if ~isempty(SelectedChans)
+    [~, cIdxPlot] = ismember(SelectedChans, AnalysisChans);
+    plot(XYplot(1, cIdxPlot), XYplot(2, cIdxPlot), '.k', 'MarkerSize', 30)
+end
+title(sprintf('Selected sensors: %s (%d of %d common channels)', ...
+    SensorSource, numel(SelectedChans), numel(AnalysisChans)))
+axis off
+save_fig(gcf, 'alpha_selected_sensors')
+
+% REPLACE_WITH_DASH_DASH- Per-subject consistency over the selected sensors REPLACE_WITH_DASH_DASH-
+% The group statistic collapses across subjects; this shows whether the
+% difference is consistent or driven by a few participants.
+if ~isempty(SelectedChans)
+    [~, cIdxPlot] = ismember(SelectedChans, AnalysisChans);
+    subClusterDiff = mean(AlphaDiff(:, cIdxPlot), 2);
+    figure
+    bar(Subs, subClusterDiff)
+    hold on
+    yline(0, '-k', 'LineWidth', 1.5);
+    yline(mean(subClusterDiff), 'REPLACE_WITH_DASH_DASHr', 'LineWidth', 1.5);
+    xlabel('Subject'); ylabel('Alpha difference (mismatch - match)')
+    title(sprintf('Alpha difference per subject over selected sensors (group mean = %.3f)', ...
+        mean(subClusterDiff)))
+    save_fig(gcf, 'alpha_diff_persub_selected_sensors')
+end
+
+%% Memory analysis
+% Moved to MEGxBeh.Rmd, which reads AlphaTrialLevel_<ChanType>.csv exported
+% above.
+%
+% The version that used to sit here split the session in half by trial order,
+% median split alpha within each half, subsampled to equalise trial counts
+% between conditions, and ran a 2x2x2 repeated-measures ANOVA on the result.
+% With roughly 48 trials per condition that left about 12 trials per cell, so
+% each cell mean carried a standard error near 0.14, and the chain discarded
+% the magnitude of alpha within each bin, the ordering within each half, and
+% whatever trials the subsampling dropped.
+%
+% The mixed-effects models in R use every trial, keep alpha continuous, carry
+% trial order as a covariate rather than as a split, and weight each
+% participant by how much data they contribute rather than equally. The binned
+% form is still reported there for comparability with Wang et al.
+%
+% Everything those models need is in the exported table: ParticipantID,
+% TrialNum, Condition, Synchronicity, EntrainStrength, Matched, Mismatched,
+% Ambiguous, Alpha, TrialOrder and Remembered.
+
+%% Results inspection plots
+% Visual checks on the trial-level alpha measure and the memory result.
+
+% REPLACE_WITH_DASH_DASH- Distribution of trial-level alpha REPLACE_WITH_DASH_DASH-
+% The memory analysis median-splits this within each half of trials, so
+% the distribution should be reasonably continuous. A strongly bimodal or
+% heavily skewed distribution would make the median split arbitrary.
+figure
+histogram(Sync_pSub.Alpha, 50)
+xlabel('Pre-stimulus alpha (baseline-corrected, cluster mean)')
+ylabel('Trials')
+title('Trial-level pre-stimulus alpha')
+save_fig(gcf, 'alpha_trial_level_distribution')
+
+% REPLACE_WITH_DASH_DASH- Alpha by subject REPLACE_WITH_DASH_DASH-
+% Checks that no subject dominates the range, which would distort a
+% pooled analysis.
+figure
+boxplot(Sync_pSub.Alpha, Sync_pSub.ParticipantID)
+xlabel('Subject'); ylabel('Pre-stimulus alpha')
+title('Trial-level alpha by subject')
+save_fig(gcf, 'alpha_by_subject_boxplot')
+
+% REPLACE_WITH_DASH_DASH- Alpha against entrainment strength REPLACE_WITH_DASH_DASH-
+% The relationship the mixed-effects models test directly. Plotted here
+% pooled across trials purely for inspection; the model accounts for the
+% nesting within subjects that this plot ignores.
+figure
+scatter(Sync_pSub.Alpha, Sync_pSub.EntrainStrength, 8, 'filled', 'MarkerFaceAlpha', 0.2)
+xlabel('Pre-stimulus alpha'); ylabel('Entrainment strength')
+title('Pre-stimulus alpha against entrainment strength (all trials pooled)')
+save_fig(gcf, 'alpha_vs_entrainment_strength')
+
+% The recall-accuracy figure that used to close this section depended on
+% RecallAcc, which the memory ANOVA produced, and is now drawn in MEGxBeh.Rmd
+% alongside the models it illustrates.
+
+%% Continuous trial-level analyses
+% Moved to MEGxBeh.Rmd, for the same reason as the memory analysis above.
+%
+% The versions that used to sit here fitted a model per participant and then
+% tested the coefficients across participants: Fisher-z transformed Spearman
+% correlations for alpha against entrainment strength, and per-participant
+% logistic slopes for alpha against memory. Both weight a participant with 20
+% usable trials the same as one with 90, and both drop any participant whose
+% data will not support a fit at all, which for the logistic version means
+% anyone whose trials in a condition were all remembered or all forgotten.
+%
+% The remaining sections of this script are the parts that genuinely need
+% MATLAB: the sensor-space cluster test and the spatial diagnostics.
+
+
+function save_fig_png_safe(fig, filepath)
+% Some plotting utilities (e.g. SPM's spm_eeg_plotScalpData) attach UI
+% components REPLACE_WITH_DASH_DASH typically uicontrol objects such as sliders or buttons REPLACE_WITH_DASH_DASH
+% to their figures. MATLAB's classic print() function refuses to export
+% any figure containing these ("UI components are not supported. To
+% include UI components, use the 'exportapp' function"), even though the
+% plot itself is an ordinary static image and the UI elements serve no
+% purpose in a saved file, and this check applies regardless of output
+% format. They are removed here before printing, since a saved figure
+% can't be interactive anyway.
+delete(findall(fig, 'Type', 'uicontrol'));
+print(fig, filepath, '-dpng', '-r300');
+end
+##### SOURCE END #####
+-->
+</body>
+</html>

@@ -1,358 +1,1182 @@
 ---
-title: "TIME_BehaviouralxMEG"
-output: 
-  pdf_document: 
+title: 'TIME: MEG and behavioural analyses'
+output:
+  html_document:
+    df_print: paged
+  pdf_document: null
 date: "`r Sys.Date()`"
-editor_options: 
+editor_options:
   chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-## Confirmatory Analysis 
-```{r Load Data,message=FALSE, warning=FALSE, out.width="55%"}
-# Load libraries and set path ------------------------------------------------
-library(lme4); library(car); 
-library(ggplot2); library(emmeans)
-library(tinytex); library(MKinfer)
-library(sjPlot); library(sjmisc)
-library(ggpubr); library(lmerTest)
-library(circular); library(bpnreg)
-library(dplyr); library(brms)
 
-# Arrange the data --------------------------------------------------------
+## Confirmatory analyses
 
-# Set the seed for reproducibility
-set.seed(13021996)
+```{r Load Data, message=FALSE, warning=FALSE, out.width="55%"}
+# Libraries -------------------------------------------------------------------
+library(lme4);     library(lmerTest); library(car)
+library(emmeans);  library(ggplot2);  library(ggpubr)
+library(circular); library(MKinfer);  library(effectsize)
+library(sjPlot);   library(dplyr);    library(devEMF)
 
-# get data folder path
-# Current directory needs to be set to the script's folder
-DataFolder <- getwd()
+# mean_cl_normal (used by several summary plots below) is surfaced by ggplot2
+# but calls Hmisc::smean.cl.normal, so a missing Hmisc fails mid-plot rather
+# than at load. Checked here without attaching it (Hmisc masks several dplyr
+# verbs), matching the other explicit dependency checks in this script.
+if (!requireNamespace("Hmisc", quietly = TRUE)) {
+  stop("Package 'Hmisc' is required for mean_cl_normal in the summary plots; ",
+       "install it with install.packages(\"Hmisc\").")
+}
 
-# Initialize data frame
-DatawTheta <- data.frame()
-  
-# Read the CSV file
+# Larger default text for every plot in this script: axis titles, tick
+# labels, legend text, etc. all scale off base_size, rather than setting
+# theme() individually on each plot and risking missing one. Any plot below
+# that adds its own theme() call (e.g. the rotated per-participant labels
+# further down, which need to stay smaller to avoid overlapping) does so on
+# top of this, not instead of it.
+theme_set(theme_grey(base_size = 16))
+
+# Figures: saved as .emf (vector, pastes cleanly into Word) alongside the
+# other outputs. devEMF is a pure-R implementation, so unlike MATLAB's EMF
+# export this works the same on Linux as on Windows. Install once with
+# install.packages("devEMF") if not already available.
+figdir <- "V:/TIME/LatestMEGscripts/figures"
+if (!dir.exists(figdir)) dir.create(figdir, recursive = TRUE)
+save_emf <- function(plt, name, width = 7, height = 5) {
+  emf(file.path(figdir, paste0(name, ".emf")), width = width, height = height)
+  print(plt)
+  invisible(dev.off())
+}
+
+ForCol <- "#F8766D"   # forgotten
+RemCol <- "#7CAE00"   # remembered
+
+# One seed for the whole script. Note that seeds set once at the top do not
+# protect individual resampling calls further down: anything random that runs
+# in between changes the state they inherit. Every bootstrap below therefore
+# reseeds immediately before it runs.
+SEED <- 13021996
+set.seed(SEED)
+
+# Effect coding for the factors, so that the Type III tests below (car::Anova,
+# type = 3) are the intended marginal tests. Under R's default treatment
+# contrasts, a Type III test of a main effect in a model that also contains an
+# interaction is the effect at the OTHER term's reference level, not averaged
+# over it -- misleading for the several `* Condition` models here. contr.sum
+# makes those rows marginal. Note this also changes how summary() coefficients
+# read (deviations from the grand mean rather than from a reference level);
+# emmeans/emtrends/pairs are unaffected either way.
+options(contrasts = c("contr.sum", "contr.poly"))
+
+# Data ------------------------------------------------------------------------
+# The working directory must be the folder holding this script.
 DatawTheta <- read.csv("DatawTheta.csv", header = TRUE)
 
-```
+# Variable types. Done once here rather than repeated per chunk.
+#
+# The raw CSV stores this condition as "NoFlicker"; it is relabelled to
+# "LongNoFlicker" immediately below for display everywhere in this script
+# (plots, tables, printed output). levels = ... below matches the actual
+# strings in the data so the factor assignment succeeds, and labels = ...
+# then renames that level -- doing both in one factor() call rather than
+# matching then separately reassigning levels() avoids a silent NA if the
+# two steps ever drift out of sync.
+DatawTheta$Condition     <- factor(DatawTheta$Condition,
+                                   levels = c("NoFlicker", "SyncTheta",
+                                              "AsyncTheta", "SyncDelta"),
+                                   labels = c("LongNoFlicker", "SyncTheta",
+                                              "AsyncTheta", "SyncDelta"))
 
-```{r Theta x Condition Analysis,message=FALSE, warning=FALSE, out.width="55%"}
-# Set the seed for reproducibility
-set.seed(13021996)
+# Shared colour palette for Condition, used by every plot that colours or
+# fills by Condition below, so that a given condition is always the same
+# colour across figures. Values match the previously-agreed figure colours
+# rather than ggplot's own default hue palette (which happens to agree on
+# three of the four, but substitutes green for SyncDelta rather than orange).
+CONDITION_COLORS <- c(LongNoFlicker = "#F8766D",
+                       SyncTheta     = "#00BFC4",
+                       AsyncTheta    = "#C77CFF",
+                       SyncDelta     = "#FF9913")
 
-# Looking at extracted theta power as function of conditions
-# There were cases of overfitting. ClipID removed to solve it.
-# Also, there was a warning about "glmer" being unnecessary. Changed to "lmer"
-
-# recode variable types
-# Accuracy and theta analysis required scaling of theta power
-DatawTheta$Condition <- as.factor(DatawTheta$Condition)
 DatawTheta$ParticipantID <- as.factor(DatawTheta$ParticipantID)
-DatawTheta$ClipID <- as.factor(DatawTheta$ClipID)
-DatawTheta$Theta4Hz <- scale(DatawTheta$Theta4Hz)
-# DatawTheta$RelTheta4Hz <- scale(DatawTheta$RelTheta4Hz)
-# DatawTheta$BroadTheta <- scale(DatawTheta$BroadTheta)
-# DatawTheta$Synchronicity <- scale(DatawTheta$Synchronicity)
+DatawTheta$ClipID        <- as.factor(DatawTheta$ClipID)
 
-# Theta 4Hz
-DatawTheta.model = lmer(Theta4Hz ~ Condition + (1|ParticipantID),
-                         data=DatawTheta)
+# Scaling. as.vector() strips the attributes scale() leaves behind; without it
+# the column is a 1-column matrix, which some downstream functions handle
+# inconsistently.
+DatawTheta$Theta4Hz    <- as.vector(scale(DatawTheta$Theta4Hz))
 
-summary(DatawTheta.model)
-DatawTheta.model.emm <- emmeans(DatawTheta.model,"Condition")
-pairs(DatawTheta.model.emm)
+# Channel-space measures, present from the 2026 rerun of MainAnalysis.m onward.
+CHANNEL_MEASURES <- c("WholeBrainTheta", "VisualTheta", "AuditoryTheta", "AudioVisualTheta")
+hasChannel <- all(CHANNEL_MEASURES %in% names(DatawTheta))
+if (hasChannel) {
+  for (v in CHANNEL_MEASURES) DatawTheta[[v]] <- as.vector(scale(DatawTheta[[v]]))
+} else {
+  message("Channel-space theta columns not found; skipping those analyses.")
+}
 
-# plot theta power per condition
-DatawTheta.pCond <- aggregate(Theta4Hz ~ ParticipantID + Condition, data = DatawTheta, mean)
-colnames(DatawTheta.pCond) <- c("ParticipantID", "Condition", "Theta4Hz")
-DatawTheta.pCond$Condition = factor(DatawTheta.pCond$Condition, levels = c("NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+# Delta counterparts, present from the 2026 rerun of Analysis.m onward.
+hasDelta <- "Delta1_7Hz" %in% names(DatawTheta)
+if (hasDelta) {
+  DatawTheta$Delta1_7Hz <- as.vector(scale(DatawTheta$Delta1_7Hz))
+} else {
+  message("Delta columns not found; skipping the 1.7 Hz analyses.")
+}
 
-ggplot(DatawTheta.pCond, aes(x = Condition, y = Theta4Hz, fill = Condition)) +
-  geom_violin(trim=FALSE)+
-  geom_point(size = 2, color = "gray") +
-  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
-  labs(x = "Condition", y = "Theta 4Hz Power") +
-  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.1, color = "black") +
-  stat_summary(fun = mean, geom = "point", size = 2, color = "black")
+# Weighted delta, present only if TIME_TF.m saved a channel-resolved delta band.
+DELTA_WEIGHTED <- c("VisualDelta", "AuditoryDelta")
+hasWeightedDelta <- all(DELTA_WEIGHTED %in% names(DatawTheta))
+if (hasWeightedDelta) {
+  for (v in DELTA_WEIGHTED) DatawTheta[[v]] <- as.vector(scale(DatawTheta[[v]]))
+} else {
+  message("Weighted delta columns not found; skipping those analyses.")
+}
 
-# Relative Theta 4Hz Power: relative to 3.5 and 4.5 Hz freqs
-DatawRelTheta.model <- lmer(RelTheta4Hz ~ Condition + (1|ParticipantID),
-                         data=DatawTheta)
+cat("Trials:", nrow(DatawTheta),
+    "| participants:", nlevels(DatawTheta$ParticipantID),
+    "| trials with a synchronicity value:", sum(!is.na(DatawTheta$Synchronicity)), "\n")
+```
 
-Anova(DatawRelTheta.model)
-summary(DatawRelTheta.model)
-DatawRelTheta.model.emm <- emmeans(DatawRelTheta.model,"Condition")
-pairs(DatawRelTheta.model.emm)
+```{r Model reporting helpers, message=FALSE, warning=FALSE}
+# Shared reporting used by the trial-level models and the circular tests below,
+# defined once so every analysis reports the same quantities the same way.
 
-# plot theta power per condition
-DatawRelTheta.pCond <- aggregate(RelTheta4Hz ~ ParticipantID + Condition, data = DatawTheta, mean)
-colnames(DatawRelTheta.pCond) <- c("ParticipantID", "Condition", "RelTheta4Hz")
-DatawRelTheta.pCond$Condition = factor(DatawRelTheta.pCond$Condition, levels = c("NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+# Smallest effects of interest for the equivalence tests, on each model's own
+# coefficient scale. These let a null read as "evidence of absence" vs
+# "inconclusive at this n" rather than a bare non-significant p.
+#
+# They are NOT taken from the original studies, deliberately. The published TIME
+# effect (Clouter et al. 2017; Wang et al. 2018) is a synchronous-vs-asynchronous
+# CONDITION contrast on memory accuracy -- a different quantity and scale from the
+# continuous MEG-predictor slopes these equivalence tests actually bound (per-SD
+# phase-lag, alpha and theta-power effects), and the pre-stimulus alpha analyses
+# have no original benchmark at all. Mapping the condition effect onto these
+# slopes would be a false lookup. So the bound is a conventional smallest effect
+# of interest: Cohen's d = 0.2 (the standard fallback SESOI when no domain value
+# exists; Lakens 2017), expressed on each scale. To anchor equivalence to the
+# original TIME effect instead, test the Sync-minus-Async CONDITION contrast (an
+# emmeans contrast on the memory model) against that effect, not these slopes.
+SESOI_LOGODDS <- 0.2 * pi / sqrt(3)   # d = 0.2 on the log-odds scale (OR ~ 1.44 per SD)
+SESOI_ALPHA   <- 0.2                   # d = 0.2 = 0.2 SD of pre-stimulus alpha
 
-ggplot(DatawRelTheta.pCond, aes(x = Condition, y = RelTheta4Hz, fill = Condition)) +
-  geom_violin(trim=FALSE)+
-  geom_point(size = 2, color = "gray") +
-  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
-  labs(x = "Condition", y = "Relative Theta 4Hz Power") +
-  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.1, color = "black") +
-  stat_summary(fun = mean, geom = "point", size = 2, color = "black")
+# Fixed-effect table for a fitted lmer/glmer: estimate (or odds ratio) with a
+# Wald 95% CI [#10], the Wald p, the smallest effect detectable at 80% power
+# (MDES = (z.975 + z.80) * SE, on the coefficient scale) [#3], and -- if a
+# smallest-effect-of-interest is given -- an equivalence verdict from the 90% CI
+# (two one-sided tests: "equivalent" if the 90% CI is inside +/- sesoi, "effect"
+# if the 95% CI excludes 0, else "inconclusive") [#1]. Ends with convergence /
+# singularity / dispersion diagnostics [#12].
+report_model <- function(m, exponentiate = FALSE, sesoi = NULL, terms = NULL, label = "") {
+  co  <- summary(m)$coefficients
+  est <- co[, "Estimate"]; se <- co[, "Std. Error"]
+  pp  <- co[, grep("^Pr", colnames(co))[1]]
+  z95 <- qnorm(0.975); z90 <- qnorm(0.95); zpw <- qnorm(0.80)
+  keep <- if (is.null(terms)) rownames(co) else intersect(terms, rownames(co))
+  tf   <- if (exponentiate) exp else identity
+  mdes <- (z95 + zpw) * se                       # min detectable effect, coefficient scale
 
-RelThetaEMFrame <- data.frame(DatawRelTheta.model.emm)
-RelThetaEMFrame$Condition = factor(RelThetaEMFrame$Condition, levels = c( "NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+  out <- data.frame(
+    term     = keep,
+    estimate = round(tf(est[keep]), 3),
+    CI_low   = round(tf(est[keep] - z95 * se[keep]), 3),
+    CI_high  = round(tf(est[keep] + z95 * se[keep]), 3),
+    p        = signif(pp[keep], 3),
+    MDES     = round(tf(mdes[keep]), 3),         # exp() => minimum detectable odds ratio
+    row.names = NULL, check.names = FALSE)
+  if (!is.null(sesoi)) {
+    lo90 <- est[keep] - z90 * se[keep]; hi90 <- est[keep] + z90 * se[keep]
+    lo95 <- est[keep] - z95 * se[keep]; hi95 <- est[keep] + z95 * se[keep]
+    out$equivalence <- ifelse(lo90 > -sesoi & hi90 < sesoi, "equivalent",
+                       ifelse(lo95 > 0 | hi95 < 0,          "effect",
+                                                            "inconclusive"))
+  }
+  if (nzchar(label)) cat("\n---", label, "---\n")
+  print(out, row.names = FALSE)
+  cat(sprintf("  diagnostics: converged=%s | singular=%s | dispersion=%s\n",
+              !.conv_warn(m), lme4::isSingular(m), .disp_ratio(m)))
+  invisible(out)
+}
 
-ggplot(RelThetaEMFrame, aes(x = Condition, y = emmean, color = Condition)) +
-  geom_point(size = 5) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.3, linewidth = 2) +
-  labs(x = "Condition", y = "Estimated Marginal Mean")
+.conv_warn  <- function(m) length(tryCatch(m@optinfo$conv$lme4$messages,
+                                           error = function(e) NULL)) > 0
+.disp_ratio <- function(m) {                     # Pearson overdispersion; ~1 good
+  fam <- tryCatch(family(m)$family, error = function(e) "gaussian")
+  if (!identical(fam, "binomial")) return("NA (gaussian)")
+  sprintf("%.2f", sum(residuals(m, type = "pearson")^2) / df.residual(m))
+}
 
-# Broad theta: 3-8 Hz
-DatawBroadTheta.model = lmer(BroadTheta ~ Condition + (1|ClipID) + 
-                           (1|ParticipantID), data=DatawTheta)
+# Bias-corrected resultant length, its uniform-null floor, and a bootstrap CI
+# for a set of per-participant angles [#11]. Raw R is biased upward -- E[R]
+# under uniformity is sqrt(pi/(4n)) (~0.16 at n=32) -- so a raw R near that
+# floor is barely above chance. Rdbc is the same debiasing used for the MEG ITC
+# weights in Analysis.m. Reseeds so the bootstrap is reproducible.
+resultant_extras <- function(angles_rad, nboot = 2000, seed = 1) {
+  a <- as.numeric(angles_rad); a <- a[!is.na(a)]; n <- length(a)
+  Rraw  <- Mod(mean(exp(1i * a)))
+  Rnull <- sqrt(pi / (4 * n))
+  Rdbc  <- sqrt(max(0, (n * Rraw^2 - 1) / (n - 1)))
+  set.seed(seed)
+  bR <- replicate(nboot, Mod(mean(exp(1i * sample(a, n, replace = TRUE)))))
+  ci <- quantile(bR, c(.025, .975), names = FALSE)
+  cat(sprintf("  R = %.3f | debiased R = %.3f | null R = %.3f | bootstrap 95%% CI [%.3f, %.3f]\n",
+              Rraw, Rdbc, Rnull, ci[1], ci[2]))
+  invisible(c(R = Rraw, Rdbc = Rdbc, Rnull = Rnull, CIlow = ci[1], CIhigh = ci[2]))
+}
+```
 
-summary(DatawBroadTheta.model)
-DatawBroadTheta.model.emm <- emmeans(DatawBroadTheta.model,"Condition")
-pairs(DatawBroadTheta.model.emm)
+```{r Theta power by condition, message=FALSE, warning=FALSE, out.width="55%"}
+set.seed(SEED)
 
-# plot theta power per condition
-DatawBroadTheta.pCond <- aggregate(BroadTheta ~ ParticipantID + Condition, data = DatawTheta, mean)
-colnames(DatawBroadTheta.pCond) <- c("ParticipantID", "Condition", "BroadTheta")
-DatawBroadTheta.pCond$Condition = factor(DatawBroadTheta.pCond$Condition, levels = c("NoFlicker", "SyncTheta", "AsyncTheta", "SyncDelta"), ordered = FALSE)
+# Helper: per-condition violin plot, used for every power measure -------------
+plot_by_condition <- function(dat, yvar, ylab) {
+  agg <- aggregate(dat[[yvar]] ~ ParticipantID + Condition, data = dat, FUN = mean)
+  names(agg) <- c("ParticipantID", "Condition", "y")
+  ggplot(agg, aes(x = Condition, y = y, fill = Condition)) +
+    geom_violin(trim = FALSE) +
+    geom_point(size = 2, color = "gray") +
+    geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
+    scale_fill_manual(values = CONDITION_COLORS) +
+    # x = NULL: the condition names on the tick labels already say
+    # "condition", so a further axis title repeating that underneath them is
+    # redundant. legend.position = "none": Condition is fully readable from
+    # the x-axis already, so the fill legend duplicates it for no benefit.
+    labs(x = NULL, y = ylab) +
+    stat_summary(fun.data = mean_cl_normal, geom = "errorbar",
+                 width = 0.1, color = "black") +
+    stat_summary(fun = mean, geom = "point", size = 2, color = "black") +
+    theme(legend.position = "none")
+}
 
-ggplot(DatawBroadTheta.pCond, aes(x = Condition, y = BroadTheta, fill = Condition)) +
-  geom_violin(trim=FALSE)+
-  geom_point(size = 2, color = "gray") +
-  geom_line(aes(group = ParticipantID), color = "gray", alpha = .7) +
-  labs(x = "Condition", y = "Broad Theta 3-8 Hz") +
-  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.1, color = "black") +
-  stat_summary(fun = mean, geom = "point", size = 2, color = "black")
+# Theta power as a function of condition. Every measure uses the same
+# model structure, so that they can be compared directly.
+#
+# Random effects: (1|ParticipantID) + (1|ClipID) is tried first for every
+# measure, falling back to participant alone only if that produces a
+# singular fit (lme4::isSingular -- typically ClipID's variance collapsing
+# to ~0, meaning there isn't enough trials-per-clip signal to support it for
+# that particular outcome).
+#
+# lmer, not glmer. These outcomes are continuous, and calling glmer() without a
+# family argument silently falls back to a Gaussian fit, which is lmer with a
+# less appropriate estimation routine and prompts a warning to that effect.
 
+fit_with_clip_fallback <- function(outcome, data, extra_terms = "") {
+  f_full <- as.formula(paste0(outcome, " ~ Condition", extra_terms,
+                               " + (1 | ParticipantID) + (1 | ClipID)"))
+  m_full <- lmer(f_full, data = data)
+  if (isSingular(m_full)) {
+    message(outcome, ": (1|ParticipantID) + (1|ClipID) was singular; ",
+            "falling back to (1|ParticipantID) alone.")
+    f_reduced <- as.formula(paste0(outcome, " ~ Condition", extra_terms,
+                                    " + (1 | ParticipantID)"))
+    return(lmer(f_reduced, data = data))
+  }
+  m_full
+}
+
+# Power by condition: same model structure and output for every measure, so
+# they are looped over a spec list rather than written out one block each.
+# The 1.7 Hz delta measures are the control for whether any effect of rhythmic
+# stimulation is specific to theta, so they get the same treatment as 4 Hz
+# rather than being left out; included only if present.
+power_specs <- list(
+  list(measure = "Theta4Hz",   data = DatawTheta, ylab = "4 Hz theta power (z)",          file = "theta4hz"))
+# Visual- and auditory-weighted power get the same by-condition treatment as
+# each other, with the unweighted whole-brain measure as the non-specific
+# control against which any weighting-specific effect is read.
+if (hasChannel) {
+  power_specs <- c(power_specs, list(
+    list(measure = "WholeBrainTheta", data = DatawTheta, ylab = "Whole-brain 4 Hz power (z)",        file = "wholebraintheta"),
+    list(measure = "VisualTheta",     data = DatawTheta, ylab = "Visual-weighted 4 Hz power (z)",    file = "visualtheta"),
+    list(measure = "AuditoryTheta",   data = DatawTheta, ylab = "Auditory-weighted 4 Hz power (z)",  file = "auditorytheta")))
+}
+if (hasDelta) {
+  power_specs <- c(power_specs, list(
+    list(measure = "Delta1_7Hz", data = DatawTheta, ylab = "Delta1_7Hz (z)", file = "delta1_7hz")))
+}
+if (hasWeightedDelta) {
+  power_specs <- c(power_specs, list(
+    list(measure = "VisualDelta",   data = DatawTheta, ylab = "Visual-weighted 1.7 Hz power (z)",   file = "visualdelta"),
+    list(measure = "AuditoryDelta", data = DatawTheta, ylab = "Auditory-weighted 1.7 Hz power (z)", file = "auditorydelta")))
+}
+
+for (s in power_specs) {
+  m <- fit_with_clip_fallback(s$measure, s$data)
+  cat("\n===", s$measure, "===\n")
+  print(Anova(m))
+  print(summary(m))
+  emm <- emmeans(m, "Condition")
+  print(emm)
+  print(pairs(emm))
+  p <- plot_by_condition(s$data, s$measure, s$ylab)
+  print(p)
+  save_emf(p, paste0(s$file, "_by_condition"))
+}
+
+# Whether the condition effect itself differs between the two weightings. The
+# separate models above cannot answer this: each trial contributes a visual and
+# an auditory value, so the two are stacked and Condition * Weighting is tested
+# directly, with (1|TrialUID) holding the pairing.
+if (hasChannel) {
+  DatawWeighting <- rbind(
+    transform(DatawTheta, Power = VisualTheta,   Weighting = "Visual"),
+    transform(DatawTheta, Power = AuditoryTheta, Weighting = "Auditory"))
+  DatawWeighting$Weighting <- factor(DatawWeighting$Weighting,
+                                     levels = c("Visual", "Auditory"))
+  DatawWeighting$TrialUID  <- factor(rep(seq_len(nrow(DatawTheta)), 2))
+
+  m_weighting <- lmer(Power ~ Condition * Weighting +
+                        (1 | ParticipantID) + (1 | ClipID) + (1 | TrialUID),
+                      data = DatawWeighting)
+  if (isSingular(m_weighting)) {
+    message("Weighting x Condition: dropping (1|ClipID) after a singular fit.")
+    m_weighting <- lmer(Power ~ Condition * Weighting +
+                          (1 | ParticipantID) + (1 | TrialUID),
+                        data = DatawWeighting)
+  }
+
+  cat("\n=== Visual vs auditory weighting x Condition ===\n")
+  print(Anova(m_weighting, type = 3))
+  print(summary(m_weighting))
+  emm_cond_by_w <- emmeans(m_weighting, ~ Condition | Weighting)
+  print(emm_cond_by_w)
+  print(pairs(emm_cond_by_w))
+  print(pairs(emmeans(m_weighting, ~ Weighting | Condition)))
+
+  p_weighting <- ggplot(DatawWeighting, aes(x = Condition, y = Power, fill = Condition)) +
+    stat_summary(fun = mean, geom = "bar", alpha = 0.6) +
+    stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.1) +
+    scale_fill_manual(values = CONDITION_COLORS) +
+    facet_wrap(~ Weighting) +
+    labs(y = "4 Hz power (z)") +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 45, hjust = 1))
+  print(p_weighting)
+  save_emf(p_weighting, "visual_auditory_theta_by_condition")
+}
+
+# Same side-by-side view at the delta drive frequency.
+if (hasWeightedDelta) {
+  DatawDelta <- rbind(
+    transform(DatawTheta, Power = VisualDelta,   Weighting = "Visual"),
+    transform(DatawTheta, Power = AuditoryDelta, Weighting = "Auditory"))
+  DatawDelta$Weighting <- factor(DatawDelta$Weighting,
+                                 levels = c("Visual", "Auditory"))
+
+  p_delta <- ggplot(DatawDelta, aes(x = Condition, y = Power, fill = Condition)) +
+    stat_summary(fun = mean, geom = "bar", alpha = 0.6) +
+    stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.1) +
+    scale_fill_manual(values = CONDITION_COLORS) +
+    facet_wrap(~ Weighting) +
+    labs(y = "1.7 Hz power (z)") +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 45, hjust = 1))
+  print(p_delta)
+  save_emf(p_delta, "visual_auditory_delta_by_condition")
+}
 
 ```
 
-```{r Phase Synchrony ~ Condition,message=FALSE, warning=FALSE, out.width="55%"}
-# Set the seed for reproducibility
-set.seed(13021996)
+```{r Accuracy by theta power, message=FALSE, warning=FALSE, out.width="55%"}
+set.seed(SEED)
 
-# Average trials per participant
-DatawPhase.pCond <- aggregate(Synchronicity ~ ParticipantID + Condition,
-                              data = DatawTheta,
-                              subset = DatawTheta$Condition == "SyncTheta" | DatawTheta$Condition == "AsyncTheta",
-                              mean)
+# Does theta power on a trial predict whether it was remembered?
+#
+# Each measure was previously fitted twice into the same object name, once with
+# trial-order covariates and a random-slope structure and once without, so only
+# the simpler model survived and the covariates never entered any reported
+# result. The two are separated here: the covariate model is fitted first and
+# compared with the simpler one, so the choice between them is visible.
+#
+# The covariates matter. EncodingPosition and BlockNumber capture position
+# within the session, and both memory and theta power drift over a session, so
+# omitting them leaves an obvious confound in a trial-level analysis.
 
-# get radian values for sync theta phase angle synchronicity
-SyncPhaseRads <- DatawPhase.pCond[DatawPhase.pCond$Condition == "SyncTheta",]$Synchronicity
+fit_theta_models <- function(measure, dat) {
+  f_cov  <- as.formula(paste0("Accuracy ~ ", measure, " * Condition + ",
+                              "poly(EncodingPosition, 2) + poly(BlockNumber, 2) + ",
+                              "(1 | ClipID) + (1 | ParticipantID)"))
+  f_base <- as.formula(paste0("Accuracy ~ ", measure, " * Condition + ",
+                              "(1 | ClipID) + (1 | ParticipantID)"))
+  m_cov  <- glmer(f_cov,  data = dat, family = binomial)
+  m_base <- glmer(f_base, data = dat, family = binomial)
 
-# multiply by 2 to simulate testing within 0 to 180 degrees
-SyncPhaseRads_transformed <- 2 * SyncPhaseRads
+  cat("\n===", measure, "===\n")
+  cat("with trial-order covariates:\n"); print(Anova(m_cov, type = 3))
+  cat("without:\n");                     print(Anova(m_base, type = 3))
+  cat("AIC:\n");                         print(AIC(m_cov, m_base))
+  print(summary(m_cov))
+  print(emtrends(m_cov, list(pairwise ~ Condition), var = measure))
+  # Odds ratios with CIs, minimum detectable effect, equivalence and diagnostics
+  # for the covariate model [#10, #3, #1, #12].
+  report_model(m_cov, exponentiate = TRUE, sesoi = SESOI_LOGODDS,
+               label = paste(measure, "-> memory (odds ratios)"))
+  invisible(list(cov = m_cov, base = m_base))
+}
 
-# convert to a circular object for full circle analysis
-SyncPhaseRads_circular <- circular(SyncPhaseRads_transformed, units = "radians", modulo = "2pi")
+Theta4Hz.acc    <- fit_theta_models("Theta4Hz",    DatawTheta)
 
-# perform Rayleigh test on the transformed data
-(SyncThetaPhase_rayleigh <- rayleigh.test(SyncPhaseRads_circular))
-
-
-# Set the seed for reproducibility
-set.seed(13021996)
-
-# do the same for async theta
-# get radian values for sync theta phase angle synchronicity
-
-AsyncPhaseRads <- DatawPhase.pCond[DatawPhase.pCond$Condition == "AsyncTheta",]$Synchronicity
-
-# multiply by 2 to simulate testing within 0 to 180 degrees
-AsyncPhaseRads_transformed <- 2 * AsyncPhaseRads
-
-# convert to a circular object for full circle analysis
-AsyncPhaseRads_circular <- circular(AsyncPhaseRads_transformed, units = "radians", modulo = "2pi")
-
-# perform Rayleigh test on the transformed data
-(AsyncThetaPhase_rayleigh <- rayleigh.test(AsyncPhaseRads_circular))
-
-
-# DatawBinaryCondition <- DatawTheta[DatawTheta$Condition == "SyncTheta" | DatawTheta$Condition == "AsyncTheta",]
-# DatawBinaryCondition$Condition <- as.numeric(DatawBinaryCondition$Condition)
-# DatawBinaryCondition[DatawBinaryCondition$Condition == 1,]$Condition <- 0
-# DatawBinaryCondition[DatawBinaryCondition$Condition == 4,]$Condition <- 1
-# DatawBinaryCondition$Condition <- as.factor(DatawBinaryCondition$Condition)
-# 
-# 
-# PhaseConditionFit <- glmer(Condition ~ abs(Synchronicity) + (1|ParticipantID) +(1|ClipID),
-#   DatawBinaryCondition, family = binomial)
+p_theta4hz_memmodel <- plot_model(Theta4Hz.acc$cov)
+print(p_theta4hz_memmodel)
+save_emf(p_theta4hz_memmodel, "theta4hz_memory_model_effects")
 
 
+# --- Simple models (no covariates, no Condition interaction) ---
+# A minimal specification for each measure, requested alongside the
+# covariate-adjusted models above: does the measure predict accuracy at all,
+# collapsing across Condition and without the trial-order covariates. Useful
+# as a plain baseline against which to judge whether the covariates or the
+# Condition interaction in the fuller models above are earning their keep.
+fit_simple_theta_model <- function(measure, dat) {
+  f_full <- as.formula(paste0("Accuracy ~ ", measure,
+                               " + (1 | ParticipantID) + (1 | ClipID)"))
+  m_full <- glmer(f_full, data = dat, family = binomial)
+  if (isSingular(m_full)) {
+    message(measure, " (simple model): (1|ParticipantID) + (1|ClipID) was ",
+            "singular; falling back to (1|ParticipantID) alone.")
+    f_reduced <- as.formula(paste0("Accuracy ~ ", measure, " + (1 | ParticipantID)"))
+    return(glmer(f_reduced, data = dat, family = binomial))
+  }
+  m_full
+}
+
+Theta4Hz.simple    <- fit_simple_theta_model("Theta4Hz",    DatawTheta)
+
+for (nm in c("Theta4Hz.simple")) {
+  cat("\n===", nm, "===\n")
+  print(Anova(get(nm), type = 3))
+  print(summary(get(nm))$coefficients)
+}
+
+# --- No-flicker condition alone ---
+# A control: with no rhythmic drive, any relationship between theta power and
+# memory is endogenous rather than stimulus-driven. Condition is dropped from
+# the formula here because only one level remains, which is why these are
+# fitted separately rather than through the helper above.
+for (measure in c("Theta4Hz")) {
+  dat <- DatawTheta[DatawTheta$Condition == "LongNoFlicker", ]
+  m <- glmer(as.formula(paste0("Accuracy ~ ", measure,
+                               " + (1 | ClipID) + (1 | ParticipantID)")),
+             data = dat, family = binomial)
+  cat("\n=== no-flicker only:", measure, "===\n")
+  print(Anova(m, type = 3))
+  print(summary(m)$coefficients)
+}
+
+# --- Combined audiovisual weighting ---
+# Condition enters as an interaction, so the question is whether the
+# relationship between theta power and memory depends on the stimulation
+# rather than only whether it exists on average. Same helper as Theta4Hz, so
+# the two are directly comparable.
+if (hasChannel) {
+  AudioVisualTheta.acc <- fit_theta_models("AudioVisualTheta", DatawTheta)
+
+  p_av_memmodel <- plot_model(AudioVisualTheta.acc$cov)
+  print(p_av_memmodel)
+  save_emf(p_av_memmodel, "audiovisualtheta_memory_model_effects")
+}
 ```
 
-```{r Accuracy ~ Phase Synchrony,message=FALSE, warning=FALSE, out.width="55%"}
+```{r Phase synchrony by condition, message=FALSE, warning=FALSE, out.width="55%"}
+set.seed(SEED)
 
-# Sort trials by phase synchrony: -45 to 45 sync, 135 to 225 async
-DatawTheta$SyncSort <- -1
+# Is the measured visual-auditory phase difference concentrated, and where?
+#
+# Per-participant circular means. mean.circular() is used rather than mean():
+# an arithmetic mean of angles is wrong wherever the values straddle the
+# wrap point, which they do here.
+DatawPhase <- DatawTheta[DatawTheta$Condition %in% c("SyncTheta", "AsyncTheta") &
+                         !is.na(DatawTheta$Synchronicity), ]
 
-DatawTheta[which(DatawTheta$Synchronicity*(180 / pi) < 45 & DatawTheta$Synchronicity*(180 / pi) > -45),]$SyncSort <- 1
+circ_mean_by <- function(dat, cond) {
+  sub <- dat[dat$Condition == cond, ]
+  vapply(split(sub$Synchronicity, droplevels(sub$ParticipantID)),
+         function(x) as.numeric(mean.circular(circular(x, units = "radians"))),
+         numeric(1))
+}
 
-## Circular mixed-effects
-DatawSyncTheta <- select(DatawTheta[DatawTheta$Condition == "SyncTheta" & !is.na(DatawTheta$Synchronicity),], Synchronicity, Accuracy, ParticipantID, ClipID, SyncSort)
+SyncPhaseRads  <- circ_mean_by(DatawPhase, "SyncTheta")
+AsyncPhaseRads <- circ_mean_by(DatawPhase, "AsyncTheta")
 
-DatawSyncTheta[DatawSyncTheta$Accuracy == 1,]$Accuracy <- "Remembered"
-DatawSyncTheta[DatawSyncTheta$Accuracy == 0,]$Accuracy <- "Forgotten"
-
-# New column with 1 and -1 for r and f
-
-#DatawSyncTheta$Synchronicity <- DatawSyncTheta$Synchronicity + pi
-
-sum_df <- aggregate(Synchronicity ~ Accuracy + ParticipantID, data = DatawSyncTheta, mean.circular)
-
-meansum_df <- aggregate(Synchronicity ~ Accuracy, data = sum_df, mean.circular)
-
-SynchronyDiff <- (((sum_df[sum_df$Accuracy == "Remembered",]$Synchronicity -  sum_df[sum_df$Accuracy == "Forgotten",]$Synchronicity) %% pi) -pi)
-  
-
-diff_df <- data.frame(unique(sum_df$ParticipantID),SynchronyDiff)
-colnames(diff_df) <- c("ParticipantID","SynchronyDiff")
-
-# data histograms
-# circular predictor?
-# raw trial-wise
-ggplot(DatawSyncTheta, aes(x = Synchronicity*180/pi, group = Accuracy, fill = Accuracy, color = Accuracy)) +
-  geom_histogram() + xlim(180, -180) +
-  coord_radial(inner.radius = 0.1, start = -pi/2, r.axis.inside = TRUE) +
-  labs(title="All Trials")
-  # geom_vline(data=df_means, aes(xintercept = mean*180/pi, color = Accuracy),
-  #            linetype="dashed") +
-
-ggplot(DatawSyncTheta, aes(x = Synchronicity*180/pi)) +
-  geom_histogram() + xlim(180, -180) +
-  coord_radial(inner.radius = 0.1, start = -pi/2, r.axis.inside = TRUE) +
-  labs(title="All Trials")
-
-# trial-averaged
-ggplot(sum_df, aes(x = Synchronicity*180/pi, fill = Accuracy, color = Accuracy)) +
-  geom_histogram() + xlim(180, -180) +
-  coord_radial(inner.radius = 0.1, start = -pi/2,r_axis_inside = TRUE) +
-  geom_vline(data=meansum_df, aes(xintercept = Synchronicity*180/pi, color = Accuracy),
-             linetype="dashed") +
-  labs(title="Trial-average per Participant")
-
-# difference
-ggplot(diff_df, aes(x = SynchronyDiff*180/pi)) +
-  geom_histogram() + xlim(180, -180) +
-  coord_radial(inner.radius = 0.1, start = -pi/2, r_axis_inside = TRUE) +
-  geom_vline(data=diff_df, aes(xintercept = mean.circular(SynchronyDiff)*180/pi),
-             linetype="dashed") +
-  labs(title="Remembered - Forgotten Phase Angle")
+# Two questions, and they are not the same one.
+#
+# Doubling the angles before a Rayleigh test asks whether the values cluster
+# on an AXIS, treating 0 and 180 degrees as equivalent. That is the right test
+# for a quantity whose sign is arbitrary, and it is what the previous version
+# ran, but it cannot distinguish a synchronous condition sitting at 0 from one
+# sitting at 180, which is the distinction of interest here.
+#
+# The undoubled Rayleigh test asks whether the values cluster in one direction.
+# The doubled version is kept for comparison.
+report_phase <- function(rads, label) {
+  cc <- circular(rads, units = "radians", modulo = "2pi")
+  cat("\n---", label, "---\n")
+  cat("n =", length(rads),
+      "| circular mean =", round(as.numeric(mean.circular(cc)) * 180 / pi, 1), "deg",
+      "| R =", round(as.numeric(rho.circular(cc)), 3), "\n")
+  print(rayleigh.test(cc))                       # uniform against unimodal
+  resultant_extras(rads)                          # bias-corrected R + bootstrap CI [#11]
+  cc2 <- circular(2 * rads, units = "radians", modulo = "2pi")
+  cat("axial version (angles doubled):\n")
+  print(rayleigh.test(cc2))
+  invisible(cc)
+}
 
 
-# 
-PhaseXAccuracyFit <- glmer(Accuracy ~ abs(Synchronicity) + (1|ParticipantID) +(1|ClipID),
-  DatawSyncTheta, family = binomial)
+report_phase(SyncPhaseRads,  "SyncTheta")
+report_phase(AsyncPhaseRads, "AsyncTheta")
 
-Anova(PhaseXAccuracyFit)
-summary(PhaseXAccuracyFit)
+# Paired difference. This is the one measure that does not depend on the
+# arbitrary polarity of each participant's sensors, because a polarity error
+# rotates both conditions together and cancels here. Participants are matched
+# by name rather than by position, since the two vectors need not be ordered
+# identically.
+common   <- intersect(names(SyncPhaseRads), names(AsyncPhaseRads))
+PairedD  <- as.numeric(Arg(exp(1i * (SyncPhaseRads[common] - AsyncPhaseRads[common]))))
 
-
-PhaseXAccuracyFit <- glmer(Accuracy ~ poly(abs(Synchronicity)) + (1|ParticipantID) +(1|ClipID),
-  DatawSyncTheta, family = binomial)
-
-Anova(PhaseXAccuracyFit)
-summary(PhaseXAccuracyFit)
-
-PhaseXAccuracyFit <- glmer(Accuracy ~ SyncSort + (1|ParticipantID) +(1|ClipID),
-  DatawSyncTheta, family = binomial)
-
-Anova(PhaseXAccuracyFit)
-summary(PhaseXAccuracyFit)
-
-# PhaseFit <- brm(Accuracy ~ abs(Synchronicity) + (1|ParticipantID) +(1|ClipID),
-#   DatawSyncTheta, family = bernoulli)
-# PhaseFit <- brm(Accuracy ~ poly(abs(Synchronicity),2) + (1|ParticipantID) +(1|ClipID),
-#   DatawSyncTheta, family = bernoulli)
-
-# poly of synch for non-linearity
-# calculate bayes is complicated
-
-#traceplot(PhaseFit, "beta1")
-
-
+cat("\n--- Paired Sync minus Async ---\n")
+cat("n =", length(PairedD),
+    "| circular mean =", round(as.numeric(mean.circular(circular(PairedD))) * 180 / pi, 1), "deg",
+    "| R =", round(as.numeric(rho.circular(circular(PairedD))), 3), "\n")
+print(rayleigh.test(circular(PairedD, units = "radians", modulo = "2pi")))
+resultant_extras(PairedD)                          # bias-corrected R + bootstrap CI [#11]
 ```
 
-```{r Accuracy ~ Theta Analysis,message=FALSE, warning=FALSE, out.width="55%"}
+```{r Accuracy by phase synchrony, message=FALSE, warning=FALSE, out.width="55%"}
+set.seed(SEED)
 
-# Accuracy ~ Theta 4 Hz power 
+# Does the phase relationship on a trial predict whether it was remembered?
 
-DatawTheta.model = glmer(Accuracy ~ Theta4Hz*Condition + poly(EncodingPosition,2) 
-                         + poly(BlockNumber,2) +(1|ClipID) + (Theta4Hz*Condition|ParticipantID),
-                         data=DatawTheta, family = binomial)
-DatawTheta.model = glmer(Accuracy ~ Theta4Hz*Condition + (1|ClipID) + (1|ParticipantID),
-                         data=DatawTheta, family = binomial)
+DatawSync <- DatawTheta[DatawTheta$Condition %in% c("SyncTheta", "AsyncTheta") &
+                        !is.na(DatawTheta$Synchronicity), ]
+DatawSync <- droplevels(DatawSync)
 
-car::Anova(DatawTheta.model, type=3)
-summary(DatawTheta.model)
-DatawTheta.model.emm <- emmeans(DatawTheta.model,"Theta4Hz")
-pairs(DatawTheta.model.emm)
-plot_model(DatawTheta.model)
+# Phase bin, in degrees, from the wrapped angle. Written with cut() over a
+# single wrapped variable rather than as three separate which() assignments:
+# the previous version used strict inequalities throughout, so a trial landing
+# exactly on 45, -45, 135 or -135 degrees was silently left in the default
+# "180" bin regardless of where it actually fell.
+DatawSync$SyncDeg  <- as.numeric(Arg(exp(1i * DatawSync$Synchronicity))) * 180 / pi
+DatawSync$SyncSort <- cut(DatawSync$SyncDeg,
+                          breaks = c(-180, -135, -45, 45, 135, 180),
+                          labels = c("180", "270", "0", "90", "180"),
+                          include.lowest = TRUE, right = FALSE)
+DatawSync$SyncSort <- factor(as.character(DatawSync$SyncSort),
+                             levels = c("0", "90", "180", "270"))
 
-emtrends(DatawTheta.model,list(pairwise~Condition),var="Theta4Hz")
+cat("Trials per phase bin:\n"); print(table(DatawSync$SyncSort))
 
-# Use only no-flicker condition
-DatawTheta.Nof.model = glmer(Accuracy ~ Theta4Hz + (1|ClipID) + (1|ParticipantID),
-                         data=DatawTheta, 
-                         subset = DatawTheta$Condition == "NoFlicker", 
-                         family = binomial)
+# How well does the extracted phase bin (from the recorded phase on each
+# trial) agree with the condition that trial was actually run in? This is
+# a trial-level manipulation check, not a test of the memory hypothesis:
+# SyncTheta trials are nominally 0 deg and AsyncTheta nominally 180 deg,
+# so this asks how often the phase actually measured lands in the bin its
+# condition label predicts.
+cat("\nExtracted phase bin by actual condition (rows = actual, columns = extracted):\n")
+print(table(Actual = DatawSync$Condition, Extracted = DatawSync$SyncSort))
 
-car::Anova(DatawTheta.Nof.model, type=3)
-summary(DatawTheta.Nof.model)
-emmeans(DatawTheta.Nof.model,"Theta4Hz")
+syncAgree  <- mean(DatawSync$SyncSort[DatawSync$Condition == "SyncTheta"]  == "0",   na.rm = TRUE)
+asyncAgree <- mean(DatawSync$SyncSort[DatawSync$Condition == "AsyncTheta"] == "180", na.rm = TRUE)
+overallAgree <- mean(c(DatawSync$SyncSort[DatawSync$Condition == "SyncTheta"]  == "0",
+                        DatawSync$SyncSort[DatawSync$Condition == "AsyncTheta"] == "180"),
+                      na.rm = TRUE)
+cat("\nExtracted-bin agreement with actual condition:\n")
+cat("  SyncTheta trials extracted as 0 deg:   ", round(100 * syncAgree, 1), "%\n", sep = "")
+cat("  AsyncTheta trials extracted as 180 deg:", round(100 * asyncAgree, 1), "%\n", sep = "")
+cat("  Overall (both conditions pooled):      ", round(100 * overallAgree, 1), "%\n", sep = "")
 
-# Test whether Relative Theta 4 Hz power (Relative to 3.5 and 4.5 HZ frequencies) predicts memory accuracy
-DatawRelTheta.model = glmer(Accuracy ~ RelTheta4Hz*Condition + poly(EncodingPosition,2) 
-                         + poly(BlockNumber,2) + (1|ClipID) + (1|ParticipantID),
-                         data=DatawTheta, family = binomial)
+# Accuracy kept numeric for modelling and labelled separately for plotting.
+# The previous version overwrote the numeric column with the strings
+# "Remembered" and "Forgotten", which is why a second copy had to be made
+# first; keeping them separate from the start avoids the order dependence.
+DatawSync$Remembered <- factor(ifelse(DatawSync$Accuracy == 1,
+                                      "Remembered", "Forgotten"),
+                               levels = c("Forgotten", "Remembered"))
 
-DatawRelTheta.model = glmer(Accuracy ~ RelTheta4Hz*Condition + (1|ClipID) + (1|ParticipantID),
-                         data=DatawTheta, family = binomial)
+# --- Per-participant circular means by subsequent memory, and the
+#     remembered-minus-forgotten angular difference tested against uniformity.
+# Helper so the pooled and SyncTheta-only versions cannot drift apart.
+# A participant is only included if they have both a remembered and a
+# forgotten trial to take a circular mean over, so n can be < 32 (e.g. someone
+# with only forgotten SyncTheta trials drops out of the SyncTheta-only version,
+# though they may still contribute to the pooled one via their AsyncTheta trials).
+#
+# The remembered-minus-forgotten difference uses Arg(exp(i*d)), which wraps to
+# (-pi, pi] correctly. (The previous version computed ((R - F) %% pi) - pi,
+# which folds onto a half circle and forced every value negative: a true +10
+# came out as -170.) The wide columns are renamed by the names reshape actually
+# produces, not by position, so a change to the Remembered factor's level order
+# cannot silently flip the sign of the difference.
+phase_by_memory <- function(dat, label) {
+  sdf <- do.call(rbind, lapply(
+    split(dat, list(dat$ParticipantID, dat$Remembered), drop = TRUE),
+    function(d) data.frame(
+      ParticipantID = d$ParticipantID[1],
+      Remembered    = d$Remembered[1],
+      Synchronicity = as.numeric(mean.circular(circular(d$Synchronicity, units = "radians"))),
+      n             = nrow(d))))
 
-car::Anova(DatawRelTheta.model, type=3)
-summary(DatawRelTheta.model)
-emmeans(DatawRelTheta.model,"RelTheta4Hz")
-plot_model(DatawRelTheta.model)
+  # Widen both the per-participant mean and its trial count, so the difference
+  # can be weighted by how many trials each side rests on.
+  w <- reshape(sdf[, c("ParticipantID", "Remembered", "Synchronicity", "n")],
+               idvar = "ParticipantID", timevar = "Remembered", direction = "wide")
+  w$Forgotten  <- w[["Synchronicity.Forgotten"]]
+  w$Remembered <- w[["Synchronicity.Remembered"]]
+  w <- w[complete.cases(w[, c("Forgotten", "Remembered")]), ]
+  w$SynchronyDiff <- as.numeric(Arg(exp(1i * (w$Remembered - w$Forgotten))))
 
-emtrends(DatawRelTheta.model,list(pairwise~Condition),var="RelTheta4Hz")
+  # Weight [#8]: harmonic mean of the two trial counts -- the effective n behind
+  # each participant's difference -- so someone resting on a handful of trials
+  # counts less than someone with many. (The trial-level circular GLMM would be
+  # the fully principled version; this is the two-stage estimate made trial-count
+  # aware.)
+  w$wt <- 2 / (1 / w[["n.Forgotten"]] + 1 / w[["n.Remembered"]])
+  Rw   <- Mod(sum(w$wt * exp(1i * w$SynchronyDiff)) / sum(w$wt))
+  muW  <- Arg(sum(w$wt * exp(1i * w$SynchronyDiff)))
 
-# Use only no-flicker condition
-DatawRelTheta.Nof.model = glmer(Accuracy ~ RelTheta4Hz + (1|ClipID) + (1|ParticipantID),
-                         data=DatawTheta, 
-                         subset = DatawTheta$Condition == "NoFlicker", 
-                         family = binomial)
+  cat(sprintf("\nRemembered minus forgotten phase angle%s:\n", label))
+  cat("  n =", nrow(w),
+      "| circular mean =", round(as.numeric(mean.circular(circular(w$SynchronyDiff))) * 180 / pi, 1), "deg",
+      "| R =", round(as.numeric(rho.circular(circular(w$SynchronyDiff))), 3), "\n")
+  cat("  trial-count weighted: mean =", round(muW * 180 / pi, 1), "deg | R =", round(Rw, 3),
+      "| effective n range", paste(round(range(w$wt), 1), collapse = "-"), "\n")
+  print(rayleigh.test(circular(w$SynchronyDiff, units = "radians", modulo = "2pi")))
+  resultant_extras(w$SynchronyDiff)                # bias-corrected R + bootstrap CI [#11]
+  list(sum_df = sdf, wide = w)
+}
 
-car::Anova(DatawRelTheta.Nof.model, type=3)
-summary(DatawRelTheta.Nof.model)
-emmeans(DatawRelTheta.Nof.model,"RelTheta4Hz")
+pooled   <- phase_by_memory(DatawSync, "")
+sum_df   <- pooled$sum_df;   wide      <- pooled$wide
+syncOnly <- phase_by_memory(DatawSync[DatawSync$Condition == "SyncTheta", ],
+                            ", SyncTheta trials only")
+sum_df_Sync <- syncOnly$sum_df; wide_Sync <- syncOnly$wide
 
-# Test whether Broad Theta band (3-8 Hz)power predicts memory accuracy
-DatawBroadTheta.model = glmer(Accuracy ~ BroadTheta*Condition + poly(EncodingPosition,2) 
-                         + poly(BlockNumber,2) + (1|ClipID) + (1|ParticipantID),
-                         data=DatawTheta, family = binomial)
 
-DatawRelTheta.model = glmer(Accuracy ~ BroadTheta*Condition + (1|ClipID) + (1|ParticipantID),
-                         data=DatawTheta, family = binomial)
+# --- Accuracy by phase bin ---
+msum_df <- aggregate(Accuracy ~ SyncSort + ParticipantID, data = DatawSync, FUN = mean)
 
-car::Anova(DatawBroadTheta.model, type=3)
-summary(DatawBroadTheta.model)
-emmeans(DatawBroadTheta.model,"BroadTheta")
-plot_model(DatawBroadTheta.model)
+# Bootstrap comparison of the 0 deg bin against everything else. Reseeded
+# immediately before the call. The previous version compared bins labelled
+# "Async" and "Sync" that were built with a different rule from the one used
+# for SyncSort, then computed Cohen's d from two objects (SyncTheta_SyncDelta
+# and SyncTheta_AsyncTheta) that are never defined anywhere in the script, so
+# it would have stopped with an error at that point.
+#
+# "All other bins" is every trial not extracted into the 0 deg bin (90, 180
+# and 270 deg together), aggregated once per participant directly from the
+# trial-level data rather than by averaging the three bin means. This means
+# a participant's "other" value is a trial-weighted mean across whichever of
+# those three bins they contributed trials to, not an equal-weighted average
+# of three bin means -- consistent with how every other per-participant
+# accuracy figure in this script is computed.
+bin0     <- msum_df[msum_df$SyncSort == "0", ]
+binOther <- aggregate(Accuracy ~ ParticipantID,
+                       data = DatawSync[DatawSync$SyncSort != "0", ], FUN = mean)
+paired_ids <- intersect(bin0$ParticipantID, binOther$ParticipantID)
+a0     <- bin0[match(paired_ids, bin0$ParticipantID),         "Accuracy"]
+aOther <- binOther[match(paired_ids, binOther$ParticipantID), "Accuracy"]
 
-emtrends(DatawBroadTheta.model,list(pairwise~Condition),var="BroadTheta")
+set.seed(SEED)
+(Bin0_vs_Other <- boot.t.test(a0, aOther,
+                              alternative = "two.sided", mu = 0, paired = TRUE,
+                              var.equal = FALSE, conf.level = 0.95,
+                              R = 100000, symmetric = FALSE))
+cohens_d(a0, aOther, paired = TRUE)
 
-# Use only no-flicker condition
-DatawBroadTheta.Nof.model = glmer(Accuracy ~ BroadTheta + (1|ClipID) + (1|ParticipantID),
-                         data=DatawTheta, 
-                         subset = DatawTheta$Condition == "NoFlicker", 
-                         family = binomial)
+# Omnibus test across all four bins, rather than just 0 deg vs everything
+# else: does accuracy differ overall as a function of which bin the trial's
+# phase was extracted into? Two versions, matching the two approaches used
+# elsewhere in this section:
+#
+# Trial-averaged: fitted on msum_df, the same per-participant, per-bin mean
+# accuracy used in the comparison above. Averaging within participant within
+# bin already collapses across clips, so there is no ClipID left to give a
+# random intercept to, and the outcome is a continuous proportion rather than
+# a binary trial outcome, hence lmer rather than glmer.
+SyncSort.omnibus <- lmer(Accuracy ~ SyncSort + (1 | ParticipantID), data = msum_df)
+cat("\nOmnibus test across all four phase bins (trial-averaged):\n")
+print(Anova(SyncSort.omnibus, type = 3))
+(SyncSort.emm <- emmeans(SyncSort.omnibus, "SyncSort"))
+pairs(SyncSort.emm)
 
-car::Anova(DatawBroadTheta.Nof.model, type=3)
-summary(DatawBroadTheta.Nof.model)
-emmeans(DatawBroadTheta.Nof.model,"BroadTheta")
+# Trial-wise: every trial kept separate, with its own binary Accuracy outcome
+# and its own ClipID, rather than first averaging away that structure. This
+# uses more of the data (unequal numbers of trials per bin per participant
+# are handled by the model rather than by an unweighted per-participant mean
+# first), at the cost of no longer being directly comparable in scale to the
+# trial-averaged version above. Same singular-fit fallback used throughout
+# the rest of this script.
+SyncSort.omnibus.trial <- glmer(Accuracy ~ SyncSort + (1 | ParticipantID) + (1 | ClipID),
+                                 data = DatawSync, family = binomial)
+if (isSingular(SyncSort.omnibus.trial)) {
+  message("SyncSort omnibus (trial-wise): (1|ParticipantID) + (1|ClipID) was ",
+          "singular; falling back to (1|ParticipantID) alone.")
+  SyncSort.omnibus.trial <- glmer(Accuracy ~ SyncSort + (1 | ParticipantID),
+                                   data = DatawSync, family = binomial)
+}
+cat("\nOmnibus test across all four phase bins (trial-wise):\n")
+print(Anova(SyncSort.omnibus.trial, type = 3))
+(SyncSort.emm.trial <- emmeans(SyncSort.omnibus.trial, "SyncSort"))
+pairs(SyncSort.emm.trial)
 
+p_acc_by_bin <- ggplot(msum_df, aes(x = SyncSort, y = Accuracy, color = SyncSort)) +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar",
+               width = .3, linewidth = 1.5, color = "black") +
+  stat_summary(fun = mean, geom = "point", size = 2.5, color = "black") +
+  labs(x = "Extracted phase bin (degrees)", y = "Memory accuracy (proportion)") +
+  coord_cartesian(ylim = c(.3, .55))
+print(p_acc_by_bin)
+save_emf(p_acc_by_bin, "accuracy_by_phase_bin")
+
+# --- Distributions ---
+# Separate plots for Forgotten and Remembered, rather than one overlaid
+# figure, so each is fully legible on its own. Within a pair they share a
+# radial scale (the higher of the two groups' peak bin counts): letting each
+# auto-scale to its own maximum would make whichever group has fewer trials
+# look just as "full" as the other, which is misleading. The SyncTheta-only
+# pair gets its own shared max rather than reusing the pooled one, since n is
+# smaller there (reusing it would clip these bars or leave the pooled plots
+# with needless headroom).
+#
+# polar_phase_hist takes a vector of per-participant angles in radians, plots
+# them in degrees on a wrapped polar axis. -180 is dropped from the tick
+# breaks because theta = "x" wraps, so -180 and 180 are the same point and
+# labelling both prints two overlapping ticks; 180 alone still marks it.
+syncBreaks <- seq(-180, 180, length.out = 25)
+
+polar_phase_hist <- function(vals_rad, title, fill = NULL, ymax = NULL,
+                             bins = NULL, breaks = NULL,
+                             inner_radius = .05, xlab = "Phase difference (degrees)") {
+  g <- if (!is.null(breaks)) geom_histogram(breaks = breaks, fill = fill)
+       else                  geom_histogram(bins = bins)
+  p <- ggplot(data.frame(deg = vals_rad * 180 / pi), aes(x = deg)) + g +
+    coord_radial(theta = "x", inner.radius = inner_radius, start = -pi/2, expand = FALSE) +
+    scale_x_continuous(breaks = c(-90, 0, 90, 180), limits = c(-180, 180)) +
+    labs(title = title, x = xlab)
+  if (!is.null(ymax)) p <- p + ylim(0, ymax)
+  p
+}
+
+# Three plots per analysis (forgotten, remembered, their difference), for the
+# pooled data and again for SyncTheta only.
+plot_phase_distributions <- function(sdf, wdf, suffix, file_suffix) {
+  ymax <- 1.05 * max(
+    hist(sdf$Synchronicity[sdf$Remembered == "Forgotten"]  * 180 / pi, breaks = syncBreaks, plot = FALSE)$counts,
+    hist(sdf$Synchronicity[sdf$Remembered == "Remembered"] * 180 / pi, breaks = syncBreaks, plot = FALSE)$counts)
+
+  pF <- polar_phase_hist(sdf$Synchronicity[sdf$Remembered == "Forgotten"],
+                         paste0("Per-participant circular mean: forgotten trials", suffix),
+                         fill = ForCol, ymax = ymax, breaks = syncBreaks)
+  print(pF); save_emf(pF, paste0("phase_by_memory_circular_forgotten", file_suffix))
+
+  pR <- polar_phase_hist(sdf$Synchronicity[sdf$Remembered == "Remembered"],
+                         paste0("Per-participant circular mean: remembered trials", suffix),
+                         fill = RemCol, ymax = ymax, breaks = syncBreaks)
+  print(pR); save_emf(pR, paste0("phase_by_memory_circular_remembered", file_suffix))
+
+  pD <- polar_phase_hist(wdf$SynchronyDiff,
+                         paste0("Remembered minus forgotten phase angle", suffix),
+                         bins = 24, inner_radius = .1, xlab = "Difference (degrees)")
+  print(pD); save_emf(pD, paste0("remembered_minus_forgotten_phase", file_suffix))
+}
+
+plot_phase_distributions(sum_df,      wide,      "",                  "")
+plot_phase_distributions(sum_df_Sync, wide_Sync, " (SyncTheta only)", "_synctheta")
+
+# --- Trial-level models ---
+# PhaseFit.main is the marginal specification: does phase-lag magnitude
+# predict recall at all, pooling across Condition with no adjustment for it.
+# Kept for comparison, but Condition plausibly affects both accuracy and the
+# spread of abs(Synchronicity) a participant produces (Sync trials cluster
+# more tightly than Async ones do), so a slope
+# from this model alone risks confounding a Condition-level effect into the
+# phase-lag coefficient. PhaseFit.additive controls for that: it adds
+# Condition as a covariate, adjusting the phase-lag slope for whatever
+# Condition contributes on its own, but still assumes a single common slope
+# across conditions, i.e. no interaction. PhaseFit.abs is the same predictor
+# again but lets that slope itself differ by condition (the interaction
+# term), kept as a further comparison, since whether the interaction is
+# warranted over the additive model is itself informative (see the AIC
+# comparison below). PhaseFit.poly and PhaseFit.bin are further secondary
+# specifications: the polynomial versions allow a non-monotonic
+# relationship; SyncSort is the binned version.
+PhaseFit.main <- glmer(Accuracy ~ abs(Synchronicity) +
+                         (1 | ParticipantID) + (1 | ClipID),
+                       data = DatawSync, family = binomial)
+PhaseFit.additive <- glmer(Accuracy ~ abs(Synchronicity) + Condition +
+                         (1 | ParticipantID) + (1 | ClipID),
+                       data = DatawSync, family = binomial)
+PhaseFit.abs  <- glmer(Accuracy ~ abs(Synchronicity) * Condition +
+                         (1 | ParticipantID) + (1 | ClipID),
+                       data = DatawSync, family = binomial)
+PhaseFit.poly <- glmer(Accuracy ~ poly(abs(Synchronicity), 2) * Condition +
+                         (1 | ParticipantID) + (1 | ClipID),
+                       data = DatawSync, family = binomial)
+PhaseFit.bin  <- glmer(Accuracy ~ SyncSort * Condition +
+                         (1 | ParticipantID) + (1 | ClipID),
+                       data = DatawSync, family = binomial)
+
+Anova(PhaseFit.main);     summary(PhaseFit.main)
+Anova(PhaseFit.additive); summary(PhaseFit.additive)
+Anova(PhaseFit.abs);      summary(PhaseFit.abs)
+Anova(PhaseFit.poly)
+Anova(PhaseFit.bin)
+
+cat("\nAIC comparison:\n")
+print(AIC(PhaseFit.main, PhaseFit.additive, PhaseFit.abs, PhaseFit.poly, PhaseFit.bin))
+
+# Odds ratios with CIs, minimum detectable effect, equivalence and diagnostics
+# for the two primary phase -> memory specifications [#10, #3, #1, #12].
+report_model(PhaseFit.additive, exponentiate = TRUE, sesoi = SESOI_LOGODDS,
+             label = "Phase-lag magnitude -> memory, additive (odds ratios)")
+report_model(PhaseFit.abs, exponentiate = TRUE, sesoi = SESOI_LOGODDS,
+             label = "Phase-lag magnitude -> memory, x Condition (odds ratios)")
+
+# Predicted-probability plot for the interaction specification (PhaseFit.abs):
+# effect of phase-lag magnitude on recall, separately by Condition, holding
+# the random effects at population level (plot_model's default for
+# type = "pred" via ggeffects, i.e. predictions are not conditioned on any
+# particular participant or clip). ggeffects predicts over the raw (signed)
+# observed Synchronicity values and shows those on the x-axis, even though
+# the model's actual predictor is abs(Synchronicity) -- so each curve is
+# expected to be symmetric/V-shaped around 0, and the axis is labelled as
+# signed Synchronicity (not |Synchronicity|) to match what is actually
+# plotted, with a subtitle noting the model itself uses the absolute value.
+# x-axis in degrees to match every other phase-lag figure in this chapter.
+p_phasefit_abs <- plot_model(PhaseFit.abs, type = "pred",
+                              terms = c("Synchronicity [all]", "Condition")) +
+  scale_x_continuous(labels = function(x) round(x * 180 / pi)) +
+  labs(title = "Predicted recall accuracy from phase-lag magnitude, by condition",
+       subtitle = "Model predictor is |Synchronicity|, hence the symmetric curves",
+       x = "Synchronicity (degrees)", y = "Predicted probability of recall",
+       color = "Condition") +
+  scale_color_manual(values = CONDITION_COLORS) +
+  scale_fill_manual(values = CONDITION_COLORS)
+print(p_phasefit_abs)
+save_emf(p_phasefit_abs, "accuracy_predicted_from_synchronicity_by_condition")
+```
+
+## Pre-stimulus alpha analyses
+
+```{r Alpha load, message=FALSE, warning=FALSE, out.width="55%"}
+set.seed(SEED)
+
+# Trial-level alpha, exported by AlphaAnalysis.m as AlphaTrialLevel_<ChanType>.csv.
+#
+# Statistical tests run here rather than in MATLAB, not for tidiness: the
+# MATLAB versions fit a separate model per participant then test the
+# coefficients across participants, discarding the differing precision of
+# those estimates and dropping any participant with too few trials to fit.
+# A mixed-effects model on trial-level data uses every trial, weights each
+# participant by how much information they contribute, and lets sparse
+# participants borrow strength from the rest.
+#
+# Columns expected:
+#   ParticipantID, TrialNum, Condition (SyncTheta / AsyncTheta)
+#   Synchronicity, EntrainStrength   phase measures from Analysis.m
+#   Matched, Mismatched, Ambiguous   phase-bin labels
+#   Alpha                            baseline-corrected pre-stimulus alpha
+#   TrialOrder                       rank of the trial within the participant
+#   Remembered                       1 remembered, 0 forgotten
+#   ClipID                           stimulus identity, for a by-clip random
+#                                    intercept alongside participant, as in
+#                                    the theta/delta power models above
+ChanType <- "MEGPLANAR"
+Alpha <- read.csv(sprintf("AlphaTrialLevel_%s.csv", ChanType), header = TRUE)
+
+if (!"ClipID" %in% names(Alpha)) {
+  stop("AlphaTrialLevel_", ChanType, ".csv has no ClipID column. This file was ",
+       "written by an older version of Alphaanalysis.m, before ClipID was added ",
+       "to its behavioural-data merge; re-run Alphaanalysis.m to regenerate it, ",
+       "then re-knit this file. (Casting a missing column with as.factor() silently ",
+       "returns a 0-length factor rather than erroring here, which is why this is ",
+       "checked explicitly rather than left to fail downstream.)")
+}
+
+Alpha$ParticipantID <- as.factor(Alpha$ParticipantID)
+Alpha$ClipID         <- as.factor(Alpha$ClipID)
+Alpha$Condition     <- factor(Alpha$Condition, levels = c("SyncTheta", "AsyncTheta"))
+
+# MATLAB writes logicals as 0/1; make them logical again.
+for (v in c("Matched", "Mismatched", "Ambiguous")) {
+  if (v %in% names(Alpha)) Alpha[[v]] <- as.logical(Alpha[[v]])
+}
+
+# Trial order within participant, centred and scaled so that its coefficient is
+# per standard deviation rather than per trial, and so that the intercept sits
+# at the middle of the session rather than before the first trial.
+Alpha$TrialOrderZ <- as.vector(scale(Alpha$TrialOrder))
+Alpha$AlphaZ      <- as.vector(scale(Alpha$Alpha))
+
+cat("Trials:", nrow(Alpha),
+    "| participants:", nlevels(Alpha$ParticipantID),
+    "| with a memory outcome:", sum(!is.na(Alpha$Remembered)), "\n")
+cat("Matched:", sum(Alpha$Matched, na.rm = TRUE),
+    "| mismatched:", sum(Alpha$Mismatched, na.rm = TRUE),
+    "| ambiguous:", sum(Alpha$Ambiguous, na.rm = TRUE), "\n")
+
+# Alpha is exported as entirely NA whenever Alphaanalysis.m found no
+# significant cluster: there is then no principled sensor set to average it
+# over, so it is left NA rather than substituted from an arbitrary set of
+# channels (see "Sensor selection for the trial-level analyses" in
+# Alphaanalysis.m). The three alpha models below all depend on Alpha, so
+# this is checked once here and used to skip them cleanly -- with an
+# explanatory message instead of a model object -- rather than letting each
+# hit lme4's "0 (non-NA) cases" error individually.
+alphaAvailable <- sum(!is.na(Alpha$AlphaZ)) > 10
+if (!alphaAvailable) {
+  message("Alpha is unusable (", sum(!is.na(Alpha$AlphaZ)), " non-NA of ", nrow(Alpha),
+          " trials) -- Alphaanalysis.m found no significant cluster, so there was no ",
+          "sensor set to compute it from. The alpha-by-match, alpha-by-entrainment, and ",
+          "alpha-by-memory models below are skipped rather than fit on essentially no data.")
+}
+
+# Trials per participant in each phase group. A participant with very few
+# trials on one side contributes an unstable estimate to any two-stage
+# analysis; the mixed models below handle this by shrinkage, but it is worth
+# seeing.
+print(with(Alpha[Alpha$Matched | Alpha$Mismatched, ],
+           table(ParticipantID, ifelse(Matched, "matched", "mismatched"))))
+```
+
+```{r Alpha by phase match, message=FALSE, warning=FALSE, out.width="55%"}
+set.seed(SEED)
+
+# Wang et al.'s neural precondition: is pre-stimulus alpha higher before
+# trials the stimulation failed to entrain?
+#
+# The MATLAB version averaged alpha within each participant and phase group,
+# then ran a cluster test across participants. That test is over sensors and
+# belongs in MATLAB. What belongs here is the trial-level version, which does
+# not first collapse each participant to two numbers.
+
+AlphaMM <- Alpha[Alpha$Matched | Alpha$Mismatched, ]
+AlphaMM$PhaseMatch <- factor(ifelse(AlphaMM$Matched, "Matched", "Mismatched"),
+                             levels = c("Matched", "Mismatched"))
+
+# Ladder fallback used for all three alpha models below: start from the
+# maximal structure (a random slope for the effect of interest, plus random
+# intercepts for both participant and clip), and simplify one step at a time
+# only if the current fit is singular (lme4::isSingular). fit_fn is a
+# closure over the data/family/control a given model needs, so this works
+# for both lmer and glmer callers without duplicating the ladder logic.
+fit_with_slope_and_clip_fallback <- function(fixed_rhs, slope_term, fit_fn) {
+  f_full <- as.formula(paste0(fixed_rhs, " + (1 + ", slope_term,
+                               " | ParticipantID) + (1 | ClipID)"))
+  m <- fit_fn(f_full)
+  if (isSingular(m)) {
+    message("Random-slope + clip model is singular; refitting with random ",
+            "intercepts (participant + clip) only.")
+    f_int_clip <- as.formula(paste0(fixed_rhs, " + (1 | ParticipantID) + (1 | ClipID)"))
+    m <- fit_fn(f_int_clip)
+    if (isSingular(m)) {
+      message("Participant + clip intercepts model is singular; falling ",
+              "back to participant alone.")
+      f_reduced <- as.formula(paste0(fixed_rhs, " + (1 | ParticipantID)"))
+      m <- fit_fn(f_reduced)
+    }
+  }
+  m
+}
+
+# Random slopes for phase match, because the effect is a within-participant
+# contrast and the question is whether it holds beyond participant-to-participant
+# variation in its size. A random-intercept-only model would treat every trial
+# as independent evidence about that contrast and understate its uncertainty.
+if (alphaAvailable) {
+  AlphaMatch.model <- fit_with_slope_and_clip_fallback(
+    "AlphaZ ~ PhaseMatch * Condition + TrialOrderZ", "PhaseMatch",
+    function(f) lmer(f, data = AlphaMM))
+
+  Anova(AlphaMatch.model, type = 3)
+  summary(AlphaMatch.model)
+  (AlphaMatch.emm <- emmeans(AlphaMatch.model, ~ PhaseMatch | Condition))
+  pairs(AlphaMatch.emm)
+  # Effect sizes (z-alpha SDs) with CIs, minimum detectable effect, equivalence
+  # and diagnostics [#10, #3, #1, #12]. Linear model, so not exponentiated.
+  report_model(AlphaMatch.model, sesoi = SESOI_ALPHA,
+               label = "Phase match -> pre-stimulus alpha")
+
+  # TrialOrderZ is in the model rather than handled by splitting the session in
+  # half. Alpha drifts upward with time on task, and if entrainment fidelity
+  # drifts too then the two would correlate for a reason unrelated to
+  # trial-by-trial state. A median split on trial order controls for that
+  # coarsely, by treating the drift as a single step; a covariate uses the
+  # actual ordering and costs nothing.
+
+  # Per-participant means, for plotting only
+  mm_agg <- aggregate(AlphaZ ~ ParticipantID + PhaseMatch, data = AlphaMM, FUN = mean)
+  p_alpha_by_match <- ggplot(mm_agg, aes(x = PhaseMatch, y = AlphaZ)) +
+    geom_violin(trim = FALSE, fill = "lightgray") +
+    geom_point(size = 2, color = "gray45") +
+    geom_line(aes(group = ParticipantID), color = "gray", alpha = .6) +
+    stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = .1) +
+    stat_summary(fun = mean, geom = "point", size = 3) +
+    labs(x = "Phase relationship on the trial", y = "Pre-stimulus alpha (z)")
+  print(p_alpha_by_match)
+  save_emf(p_alpha_by_match, "alpha_by_phase_match")
+} else {
+  message("Skipping the alpha-by-phase-match model: Alpha is unusable (no significant cluster).")
+}
+```
+
+```{r Alpha and entrainment strength, message=FALSE, warning=FALSE, out.width="55%"}
+set.seed(SEED)
+
+# The continuous version of the same question, using entrainment strength
+# rather than a binary matched/mismatched split.
+#
+# The MATLAB version computed a Spearman correlation within each participant,
+# Fisher-z transformed them and ran a one-sample t-test. That treats a
+# participant with 20 usable trials as equal evidence to one with 90, and drops
+# anyone below the minimum trial count entirely. The model below uses all
+# trials at once.
+if (alphaAvailable) {
+  AlphaEntrain.model <- fit_with_slope_and_clip_fallback(
+    "AlphaZ ~ scale(EntrainStrength) * Condition + TrialOrderZ", "scale(EntrainStrength)",
+    function(f) lmer(f, data = Alpha))
+
+  Anova(AlphaEntrain.model, type = 3)
+  summary(AlphaEntrain.model)
+  emtrends(AlphaEntrain.model, ~ Condition, var = "scale(EntrainStrength)")
+  # Effect sizes with CIs, minimum detectable effect, equivalence, diagnostics
+  # [#10, #3, #1, #12].
+  report_model(AlphaEntrain.model, sesoi = SESOI_ALPHA,
+               label = "Entrainment strength -> pre-stimulus alpha")
+
+  # The per-participant correlations are still worth seeing, as a check that the
+  # model estimate is not carried by a few participants rather than as the test.
+  r_by_sub <- vapply(split(Alpha, Alpha$ParticipantID), function(d) {
+    ok <- !is.na(d$Alpha) & !is.na(d$EntrainStrength)
+    if (sum(ok) > 3) cor(d$Alpha[ok], d$EntrainStrength[ok], method = "spearman") else NA_real_
+  }, numeric(1))
+
+  cat("\nWithin-participant Spearman correlations, alpha against entrainment strength:\n")
+  cat("  median", round(median(r_by_sub, na.rm = TRUE), 3),
+      "| negative in", sum(r_by_sub < 0, na.rm = TRUE), "of", sum(!is.na(r_by_sub)), "participants\n")
+
+  p_entrain_corr <- ggplot(data.frame(r = r_by_sub[!is.na(r_by_sub)]), aes(x = r)) +
+    geom_histogram(bins = 15) +
+    geom_vline(xintercept = 0) +
+    geom_vline(aes(xintercept = median(r)), linetype = "dashed", color = "red") +
+    labs(x = "Within-participant Spearman r", y = "Participants",
+         title = "Pre-stimulus alpha against entrainment strength")
+  print(p_entrain_corr)
+  save_emf(p_entrain_corr, "alpha_entrainment_corr_distribution")
+} else {
+  message("Skipping the alpha-by-entrainment-strength model: Alpha is unusable (no significant cluster).")
+}
+```
+
+```{r Alpha and subsequent memory, message=FALSE, warning=FALSE, out.width="55%"}
+set.seed(SEED)
+
+# Does pre-stimulus alpha predict whether a trial was remembered, and does
+# that depend on the phase-offset condition?
+#
+# Replaces two MATLAB analyses. The first (2x2x2 repeated-measures ANOVA on
+# accuracy, after median-splitting alpha and subsampling to equalise trial
+# counts) discards a lot -- alpha's magnitude within each bin, trial
+# ordering, whatever the subsampling drops -- leaving ~12 trials/cell (SE
+# ~0.14). The second (per-participant logistic regression, t-tested slopes)
+# fails for any participant whose trials are all-remembered or all-forgotten
+# within a condition, and weights every participant equally regardless of
+# trial count.
+#
+# The model below uses every trial, keeps alpha continuous, and carries
+# trial order as a covariate rather than a split.
+
+AlphaMem <- Alpha[!is.na(Alpha$Remembered), ]
+AlphaMem$Remembered <- as.integer(AlphaMem$Remembered)
+
+if (nrow(AlphaMem) > 0 && alphaAvailable) {
+
+  AlphaMem.model <- fit_with_slope_and_clip_fallback(
+    "Remembered ~ AlphaZ * Condition + TrialOrderZ", "AlphaZ",
+    function(f) glmer(f, data = AlphaMem, family = binomial,
+                       control = glmerControl(optimizer = "bobyqa")))
+
+  Anova(AlphaMem.model, type = 3)
+  summary(AlphaMem.model)
+
+  # The interaction is the effect of interest: Wang et al. report the
+  # alpha-memory relationship in the synchronous condition only.
+  emtrends(AlphaMem.model, list(pairwise ~ Condition), var = "AlphaZ")
+
+  # A null here is more informative with a comparison model than without one.
+  AlphaMem.null <- update(AlphaMem.model, . ~ . - AlphaZ:Condition)
+  cat("\nLikelihood-ratio test for the alpha by condition interaction:\n")
+  print(anova(AlphaMem.null, AlphaMem.model))
+
+  # Odds ratios with CIs, minimum detectable effect, equivalence, diagnostics
+  # [#10, #3, #1, #12].
+  report_model(AlphaMem.model, exponentiate = TRUE, sesoi = SESOI_LOGODDS,
+               label = "Pre-stimulus alpha -> memory (odds ratios)")
+
+  # --- Binned version, for comparability with Wang et al. ---
+  # Reported alongside the continuous model rather than instead of it, since
+  # theirs is the binned form. Alpha is median split within participant and
+  # condition, without the subsampling step, which changes nothing about which
+  # trials are compared and avoids discarding any.
+  AlphaMem$AlphaBin <- ave(AlphaMem$Alpha,
+                           AlphaMem$ParticipantID, AlphaMem$Condition,
+                           FUN = function(x) ifelse(x > median(x, na.rm = TRUE),
+                                                    "High", "Low"))
+  AlphaMem$AlphaBin <- factor(AlphaMem$AlphaBin, levels = c("Low", "High"))
+
+  binned <- aggregate(Remembered ~ ParticipantID + Condition + AlphaBin,
+                      data = AlphaMem, FUN = mean)
+  print(aggregate(Remembered ~ Condition + AlphaBin, data = binned, FUN = mean))
+
+  p_mem_by_alphabin <- ggplot(binned, aes(x = AlphaBin, y = Remembered, group = ParticipantID)) +
+    geom_line(color = "gray", alpha = .6) +
+    geom_point(size = 2, color = "gray45") +
+    stat_summary(aes(group = 1), fun.data = mean_cl_normal,
+                 geom = "errorbar", width = .1) +
+    stat_summary(aes(group = 1), fun = mean, geom = "point", size = 3) +
+    facet_wrap(~ Condition) +
+    labs(x = "Pre-stimulus alpha", y = "Recall accuracy (proportion)")
+  print(p_mem_by_alphabin)
+  save_emf(p_mem_by_alphabin, "memory_by_alpha_bin")
+
+} else if (!alphaAvailable) {
+  message("Skipping the alpha-by-memory model: Alpha is unusable (no significant cluster).")
+} else {
+  message("No memory outcomes in the alpha table; skipping.")
+}
+```
+
+```{r Alpha distributions, message=FALSE, warning=FALSE, out.width="55%"}
+# Inspection plots, moved here so that the figures sit with the tests they
+# accompany rather than in a separate script.
+if (alphaAvailable) {
+  p_alpha_dist <- ggplot(Alpha, aes(x = Alpha)) +
+    geom_histogram(bins = 50) +
+    labs(x = "Baseline-corrected pre-stimulus alpha", y = "Trials")
+  print(p_alpha_dist)
+  save_emf(p_alpha_dist, "alpha_distribution")
+
+  p_alpha_by_participant <- ggplot(Alpha, aes(x = ParticipantID, y = Alpha)) +
+    geom_boxplot(outlier.size = .5) +
+    labs(x = "Participant", y = "Pre-stimulus alpha") +
+    # Kept smaller than the new global base size on purpose: 32 rotated
+    # participant labels at size 16 would overlap. Bumped up from the
+    # original size 6 so it isn't left far behind the rest of the figures,
+    # but this one is still a deliberate exception, not an oversight.
+    theme(axis.text.x = element_text(angle = 90, vjust = .5, size = 9))
+  print(p_alpha_by_participant)
+  save_emf(p_alpha_by_participant, "alpha_by_participant_boxplot")
+
+  p_alpha_vs_entrain <- ggplot(Alpha, aes(x = Alpha, y = EntrainStrength)) +
+    geom_point(size = .6, alpha = .2) +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Condition) +
+    labs(x = "Pre-stimulus alpha", y = "Entrainment strength")
+  print(p_alpha_vs_entrain)
+  save_emf(p_alpha_vs_entrain, "alpha_vs_entrainment_by_condition")
+} else {
+  message("Skipping the alpha distribution plots: Alpha is unusable (no significant cluster).")
+}
 ```
